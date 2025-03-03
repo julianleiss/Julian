@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Módulo Searcher - Julian</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="module-searcher">
+    <!-- Columna 1: Filtros -->
+    <div class="column filters">
+      <h3>Filtrar unidades</h3>
+      <div class="filter-group">
+        <label for="filter-tipo">Tipo</label>
+        <select id="filter-tipo">
+          <option value="">Todas</option>
+          <option value="Duplex">Duplex</option>
+          <option value="Casa">Casa</option>
+          <option value="Simplex">Simplex</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="filter-ambientes">Ambientes</label>
+        <select id="filter-ambientes">
+          <option value="">Todas</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="filter-total">Superficie Total</label>
+        <select id="filter-total">
+          <option value="">Todas</option>
+          <option value="40-99">40-99</option>
+          <option value="100-149">100-149</option>
+          <option value="150-199">150-199</option>
+          <option value="200-249">200-249</option>
+          <option value="250-299">250-299</option>
+          <option value="300">+300</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="filter-caracteristicas">Características</label>
+        <select id="filter-caracteristicas">
+          <option value="">Todas</option>
+          <option value="Balcón">Balcón</option>
+          <option value="Jardín">Jardín</option>
+          <option value="Parrilla">Parrilla</option>
+          <option value="Patio">Patio</option>
+          <option value="Pileta">Pileta</option>
+          <option value="Terraza">Terraza</option>
+        </select>
+      </div>
+      <button id="clear-filters">Borrar filtros</button>
+    </div>
+
+    <!-- Columna 2: Resultados -->
+    <div class="column results">
+      <h3>Resultados</h3>
+      <div id="results-list">
+        <!-- Los items filtrados se renderizarán aquí -->
+      </div>
+    </div>
+
+    <!-- Columna 3: Detalle -->
+    <div class="column details">
+      <h3>Detalle de unidad</h3>
+      <div id="unit-details">
+        <!-- Se mostrará la información detallada de la unidad seleccionada -->
+      </div>
+    </div>
+  </div>
+  
+  <script src="script.js"></script>
+</body>
+</html>

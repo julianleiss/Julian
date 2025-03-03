@@ -1,0 +1,86 @@
+/* Reset básico y fuente */
+body {
+    margin: 0;
+    font-family: "Inter", sans-serif;
+  }
+  
+  /* Contenedor principal: 3 columnas */
+  .module-searcher {
+    display: flex;
+    max-width: 1680px;
+    margin: 0 auto;
+    gap: 20px;
+    padding: 80px 30px 30px; /* 80px arriba, 30px laterales, 30px abajo */
+    box-sizing: border-box;
+  }
+  
+  /* Cada columna */
+  .column {
+    flex: 1;
+    border: 1px solid #ddd;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  
+  /* Filtros */
+  .filters .filter-group {
+    margin-bottom: 15px;
+    display: flex;
+    flex-direction: column;
+  }
+  .filters label {
+    margin-bottom: 5px;
+    font-weight: 600;
+  }
+  .filters select {
+    padding: 5px;
+    font-size: 1rem;
+  }
+  
+  /* Botón de borrar filtros */
+  #clear-filters {
+    padding: 8px 12px;
+    background-color: #fff;
+    border: 2px solid rgb(254, 85, 56);
+    color: rgb(254, 85, 56);
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s, color 0.3s;
+  }
+  #clear-filters:hover {
+    background-color: rgb(254, 85, 56);
+    color: #fff;
+  }
+  
+  /* Resultados */
+  .results #results-list .result-item {
+    padding: 10px;
+    border-bottom: 1px solid #ccc;
+    cursor: pointer;
+  }
+  .results #results-list .result-item:hover {
+    background-color: #f9f9f9;
+  }
+  .results #results-list .result-item.selected {
+    background-color: rgb(254, 85, 56);
+    color: #fff;
+  }
+  
+  /* Detalle */
+  .details p {
+    margin: 5px 0;
+  }
+  .details img {
+    max-width: 100%;
+    margin-top: 10px;
+  }
+  
+  /* Responsividad: en tablet y mobile se apilan las columnas */
+  @media (max-width: 1200px) {
+    .module-searcher {
+      flex-direction: column;
+    }
+    .column {
+      width: 100%;
+    }
+  }
