@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agendar reunión — Julián</title>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Inter", -apple-system, sans-serif;
+      background: transparent;
+      color: #111;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .booking {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 0 0 32px;
+    }
+
+    /* ── Steps ── */
+    .step { display: none; }
+    .step.active { display: block; }
+
+    /* ── Step 1: calendar ── */
+    .month-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .month-nav button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      color: #111;
+      padding: 4px 8px;
+      line-height: 1;
+    }
+    .month-nav button:disabled { opacity: 0.25; cursor: default; }
+    .month-label { font-size: 15px; font-weight: 600; text-transform: capitalize; }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      margin-bottom: 24px;
+    }
+    .cal-header {
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 4px 0;
+    }
+    .cal-day {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+      background: none;
+      color: #111;
+      transition: background 0.15s;
+    }
+    .cal-day:hover:not(:disabled) { background: #f0f0f0; }
+    .cal-day.selected { background: #111; color: #fff; }
+    .cal-day.today { font-weight: 700; }
+    .cal-day:disabled { color: #ccc; cursor: default; }
+    .cal-day.empty { cursor: default; }
+
+    /* ── Slots ── */
+    .slots-label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #888;
+      margin-bottom: 10px;
+    }
+    .slots-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 24px;
+      min-height: 48px;
+    }
+    .slot-btn {
+      padding: 10px 6px;
+      border: 1px solid #ddd;
+      background: #fff;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: border-color 0.15s, background 0.15s;
+      text-align: center;
+    }
+    .slot-btn:hover { border-color: #111; }
+    .slot-btn.selected { background: #111; color: #fff; border-color: #111; }
+    .slots-empty { font-size: 13px; color: #888; grid-column: 1/-1; padding: 8px 0; }
+
+    /* ── Step 2: form ── */
+    .form-back {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      color: #888;
+      padding: 0;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .form-back:hover { color: #111; }
+
+    .slot-summary {
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 20px;
+      padding: 10px 12px;
+      background: #f8f8f8;
+      border-radius: 4px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 14px;
+    }
+    .field label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #888;
+    }
+    .field input, .field textarea {
+      font-family: inherit;
+      font-size: 14px;
+      padding: 10px 0;
+      border: none;
+      border-bottom: 1px solid #ddd;
+      border-radius: 0;
+      outline: none;
+      background: transparent;
+      transition: border-color 0.2s;
+      width: 100%;
+      color: #111;
+    }
+    .field input:focus, .field textarea:focus { border-bottom-color: #111; }
+    .field textarea { resize: none; height: 72px; }
+
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    .turnstile-wrap { margin: 16px 0; }
+
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: #111;
+      color: #fff;
+      border: none;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      margin-top: 8px;
+    }
+    .submit-btn:disabled { opacity: 0.4; cursor: default; }
+    .submit-btn:hover:not(:disabled) { opacity: 0.8; }
+
+    .error-msg {
+      font-size: 13px;
+      color: #c00;
+      margin-top: 10px;
+      display: none;
+    }
+    .error-msg.visible { display: block; }
+
+    /* ── Step 3: success ── */
+    .success {
+      text-align: center;
+      padding: 32px 0;
+    }
+    .success-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 1.5px solid #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 20px;
+    }
+    .success h2 { font-size: 22px; font-weight: 600; margin-bottom: 8px; }
+    .success p { font-size: 14px; color: #555; margin-bottom: 4px; }
+    .success a { color: #111; font-size: 13px; }
+
+    /* ── Loading ── */
+    .loading { opacity: 0.4; pointer-events: none; }
+  </style>
+</head>
+<body>
+<div class="booking">
+
+  <!-- STEP 1: Date + slot picker -->
+  <div class="step active" id="step-1">
+    <div class="month-nav">
+      <button id="prev-month" aria-label="Mes anterior">‹</button>
+      <span class="month-label" id="month-label"></span>
+      <button id="next-month" aria-label="Mes siguiente">›</button>
+    </div>
+    <div class="calendar-grid" id="calendar-grid"></div>
+
+    <div class="slots-label">Horarios disponibles</div>
+    <div class="slots-grid" id="slots-grid">
+      <span class="slots-empty">Seleccioná una fecha</span>
+    </div>
+
+    <button class="submit-btn" id="btn-to-form" disabled>Continuar</button>
+  </div>
+
+  <!-- STEP 2: Contact form -->
+  <div class="step" id="step-2">
+    <button class="form-back" id="btn-back">← Volver</button>
+    <div class="slot-summary" id="slot-summary"></div>
+
+    <div class="field-row">
+      <div class="field"><label>Nombre</label><input type="text" id="f-name" autocomplete="given-name" required /></div>
+      <div class="field"><label>Apellido</label><input type="text" id="f-last" autocomplete="family-name" required /></div>
+    </div>
+    <div class="field"><label>Email</label><input type="email" id="f-email" autocomplete="email" required /></div>
+    <div class="field"><label>Teléfono</label><input type="tel" id="f-phone" autocomplete="tel" required /></div>
+    <div class="field"><label>Mensaje (opcional)</label><textarea id="f-notes" placeholder="¿Sobre qué proyecto querés consultar?"></textarea></div>
+
+    <div class="turnstile-wrap">
+      <div class="cf-turnstile" data-sitekey="0x4AAAAADrgY0jZ09Qpl0IO" data-callback="onTurnstileSuccess" data-theme="light"></div>
+    </div>
+
+    <button class="submit-btn" id="btn-submit" disabled>Confirmar reunión</button>
+    <div class="error-msg" id="error-msg"></div>
+  </div>
+
+  <!-- STEP 3: Success -->
+  <div class="step" id="step-3">
+    <div class="success">
+      <div class="success-icon">✓</div>
+      <h2>Reunión confirmada.</h2>
+      <p id="success-datetime"></p>
+      <p style="margin-top:8px;margin-bottom:16px">Te enviamos un email con el link de Google Meet.</p>
+      <a href id="success-meet" target="_blank" rel="noopener"></a>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API_BASE = "https://api.cs-arquitectura.com";
+const TOKEN = "fb7ea7020b93b2d90f0fc357832fbe7ab20feb074ede1462aff9aac416f9257c";
+const DAYS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+let currentMonth, selectedDate, selectedSlot, allSlots = {}, turnstileToken = null;
+
+// ── Turnstile callback ──
+window.onTurnstileSuccess = (token) => {
+  turnstileToken = token;
+  document.getElementById("btn-submit").disabled = false;
+};
+
+// ── Calendar ──
+function initCalendar() {
+  const now = new Date();
+  currentMonth = { year: now.getFullYear(), month: now.getMonth() };
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const { year, month } = currentMonth;
+  document.getElementById("month-label").textContent = `${MONTHS[month]} ${year}`;
+
+  const now = new Date(); now.setHours(0,0,0,0);
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // Disable prev if current month
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+  document.getElementById("prev-month").disabled = isCurrentMonth;
+
+  const grid = document.getElementById("calendar-grid");
+  grid.innerHTML = DAYS.map(d => `<div class="cal-header">${d}</div>`).join("");
+
+  for (let i = 0; i < firstDay; i++) {
+    grid.innerHTML += `<div class="cal-day empty"></div>`;
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const isPast = date < now;
+    const isToday = date.toDateString() === now.toDateString();
+    const ymd = toYMD(date);
+    const isSelected = selectedDate === ymd;
+    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+
+    grid.innerHTML += `<button class="cal-day${isToday ? " today" : ""}${isSelected ? " selected" : ""}"
+      ${isPast || isWeekend ? "disabled" : ""}
+      data-date="${ymd}">${d}</button>`;
+  }
+
+  grid.querySelectorAll(".cal-day[data-date]").forEach(btn => {
+    btn.addEventListener("click", () => selectDate(btn.dataset.date));
+  });
+}
+
+async function selectDate(ymd) {
+  selectedDate = ymd;
+  selectedSlot = null;
+  document.getElementById("btn-to-form").disabled = true;
+  renderCalendar();
+
+  const grid = document.getElementById("slots-grid");
+  grid.innerHTML = `<span class="slots-empty">Cargando...</span>`;
+
+  if (!allSlots[ymd]) {
+    try {
+      const from = ymd;
+      const to = ymd;
+      const url = new URL(`${API_BASE}/api/public/v1/bookings/slots`);
+      url.searchParams.set("from", from);
+      url.searchParams.set("to", to);
+      const res = await fetch(url, { headers: { "X-Intake-Token": TOKEN } });
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+      allSlots[ymd] = data.slots.filter(s => s.available);
+    } catch {
+      grid.innerHTML = `<span class="slots-empty">No se pudieron cargar los horarios.</span>`;
+      return;
+    }
+  }
+
+  renderSlots(ymd);
+}
+
+function renderSlots(ymd) {
+  const slots = allSlots[ymd] || [];
+  const grid = document.getElementById("slots-grid");
+
+  if (slots.length === 0) {
+    grid.innerHTML = `<span class="slots-empty">Sin disponibilidad este día.</span>`;
+    return;
+  }
+
+  grid.innerHTML = slots.map((s, i) => {
+    const time = formatTime(s.start);
+    const isSelected = selectedSlot && selectedSlot.start === s.start;
+    return `<button class="slot-btn${isSelected ? " selected" : ""}" data-i="${i}">${time}</button>`;
+  }).join("");
+
+  grid.querySelectorAll(".slot-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      selectedSlot = allSlots[ymd][+btn.dataset.i];
+      document.getElementById("btn-to-form").disabled = false;
+      grid.querySelectorAll(".slot-btn").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+    });
+  });
+}
+
+// ── Navigation ──
+document.getElementById("prev-month").addEventListener("click", () => {
+  currentMonth.month--;
+  if (currentMonth.month < 0) { currentMonth.month = 11; currentMonth.year--; }
+  renderCalendar();
+});
+document.getElementById("next-month").addEventListener("click", () => {
+  currentMonth.month++;
+  if (currentMonth.month > 11) { currentMonth.month = 0; currentMonth.year++; }
+  renderCalendar();
+});
+
+document.getElementById("btn-to-form").addEventListener("click", () => {
+  document.getElementById("slot-summary").textContent =
+    `${formatDateLong(selectedDate)} · ${formatTime(selectedSlot.start)} – ${formatTime(selectedSlot.end)}`;
+  showStep("step-2");
+});
+
+document.getElementById("btn-back").addEventListener("click", () => showStep("step-1"));
+
+// ── Submit ──
+document.getElementById("btn-submit").addEventListener("click", async () => {
+  const btn = document.getElementById("btn-submit");
+  const errEl = document.getElementById("error-msg");
+  errEl.classList.remove("visible");
+
+  const name = document.getElementById("f-name").value.trim();
+  const last = document.getElementById("f-last").value.trim();
+  const email = document.getElementById("f-email").value.trim();
+  const phone = document.getElementById("f-phone").value.trim();
+  const notes = document.getElementById("f-notes").value.trim();
+
+  if (!name || !last || !email || !phone) {
+    showError("Completá todos los campos obligatorios.");
+    return;
+  }
+  if (!turnstileToken) {
+    showError("Completá la verificación de seguridad.");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Confirmando...";
+
+  try {
+    const res = await fetch(`${API_BASE}/api/public/v1/bookings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Intake-Token": TOKEN },
+      body: JSON.stringify({
+        name, last, email, phone,
+        notes: notes || null,
+        start_time: selectedSlot.start,
+        end_time: selectedSlot.end,
+        turnstile_token: turnstileToken,
+        dedupe_key: crypto.randomUUID(),
+        landing_url: window.location.href,
+        referrer_url: document.referrer || null,
+        utm_source: new URLSearchParams(window.location.search).get("utm_source") || null,
+      }),
+    });
+
+    if (res.status === 409) {
+      showError("Ese horario ya fue reservado. Elegí otro.");
+      allSlots[selectedDate] = null;
+      btn.disabled = false;
+      btn.textContent = "Confirmar reunión";
+      return;
+    }
+    if (!res.ok) throw new Error(res.status);
+
+    const data = await res.json();
+    document.getElementById("success-datetime").textContent =
+      `${formatDateLong(selectedDate)} · ${formatTime(selectedSlot.start)}`;
+    if (data.meet_link) {
+      const a = document.getElementById("success-meet");
+      a.href = data.meet_link;
+      a.textContent = "Abrir link de Google Meet →";
+    }
+    showStep("step-3");
+  } catch {
+    showError("Ocurrió un error. Intentá de nuevo.");
+    btn.disabled = false;
+    btn.textContent = "Confirmar reunión";
+  }
+});
+
+// ── Helpers ──
+function showStep(id) {
+  document.querySelectorAll(".step").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+function showError(msg) {
+  const el = document.getElementById("error-msg");
+  el.textContent = msg;
+  el.classList.add("visible");
+}
+function toYMD(date) {
+  return date.toISOString().slice(0, 10);
+}
+function formatTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Argentina/Buenos_Aires" });
+}
+function formatDateLong(ymd) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+}
+
+initCalendar();
+</script>
+</body>
+</html>
