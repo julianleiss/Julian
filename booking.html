@@ -287,7 +287,7 @@
       <div class="field"><label>Apellido</label><input type="text" id="f-last" autocomplete="family-name" required /></div>
     </div>
     <div class="field"><label>Email</label><input type="email" id="f-email" autocomplete="email" required /></div>
-    <div class="field"><label>Teléfono</label><input type="tel" id="f-phone" autocomplete="tel" inputmode="tel" placeholder="+54 11 1234-5678" required /></div>
+    <div class="field"><label>Teléfono</label><input type="tel" id="f-phone" autocomplete="tel" inputmode="numeric" placeholder="+54 11 1234-5678" required onkeypress="return /[\d\s+\-()+]/.test(event.key)" /></div>
     <div class="field"><label>Mensaje (opcional)</label><textarea id="f-notes" placeholder="¿Sobre qué proyecto querés consultar?"></textarea></div>
 
     <div class="cf-turnstile" data-sitekey="0x4AAAAADrgY0jZ09Qpl0IO" data-callback="onTurnstileSuccess" data-size="invisible"></div>
@@ -320,7 +320,7 @@ let currentMonth, selectedDate, selectedSlot, allSlots = {}, turnstileToken = nu
 // ── Turnstile callback ──
 window.onTurnstileSuccess = (token) => {
   turnstileToken = token;
-  // If submit was pending, fire it now
+  document.getElementById("btn-submit").disabled = false;
   if (window._submitPending) {
     window._submitPending = false;
     document.getElementById("btn-submit").click();
@@ -458,8 +458,15 @@ document.getElementById("btn-to-form").addEventListener("click", () => {
   document.getElementById("slot-summary").textContent =
     `${formatDateLong(selectedDate)} · ${formatTime(selectedSlot.start)} – ${formatTime(selectedSlot.end)}`;
   showStep("step-2");
-  // Enable submit immediately — Turnstile invisible fires callback automatically
-  document.getElementById("btn-submit").disabled = false;
+  // Execute invisible Turnstile now — button enables when token arrives in callback
+  if (!turnstileToken) {
+    try { turnstile.execute(); } catch(e) {
+      // Turnstile not ready yet — retry once it loads
+      document.getElementById("btn-submit").disabled = false;
+    }
+  } else {
+    document.getElementById("btn-submit").disabled = false;
+  }
 });
 
 document.getElementById("btn-back").addEventListener("click", () => showStep("step-1"));
@@ -489,9 +496,11 @@ document.getElementById("btn-submit").addEventListener("click", async () => {
     return;
   }
   if (!turnstileToken) {
-    // Invisible Turnstile: execute challenge, then retry on callback
+    // Token not ready yet — execute and wait for callback to retry
     window._submitPending = true;
-    try { turnstile.execute(); } catch(e) { showError("Error de verificación. Intentá de nuevo."); }
+    try { turnstile.execute(); } catch(e) {
+      showError("Error de verificación. Recargá la página e intentá de nuevo.");
+    }
     return;
   }
 
