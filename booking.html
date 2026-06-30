@@ -33,6 +33,25 @@
       padding: 32px 24px 48px;
     }
 
+    /* ── Header ── */
+    .booking-header {
+      margin-bottom: 32px;
+    }
+    .booking-title {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--brown);
+      letter-spacing: -0.01em;
+      margin-bottom: 8px;
+      line-height: 1.2;
+      text-transform: uppercase;
+    }
+    .booking-subtitle {
+      font-size: 14px;
+      color: var(--brown-mid);
+      line-height: 1.5;
+    }
+
     /* ── Steps ── */
     .step { display: none; }
     .step.active { display: block; }
@@ -193,8 +212,6 @@
 
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 
-    .turnstile-wrap { margin: 20px 0 4px; }
-
     .submit-btn {
       width: 100%;
       padding: 16px;
@@ -262,6 +279,12 @@
 <body>
 <div class="booking">
 
+  <!-- Header -->
+  <div class="booking-header">
+    <h1 class="booking-title">Agendá una visita a Julián</h1>
+    <p class="booking-subtitle">Elegí un horario disponible y nos comunicaremos con vos para confirmar la visita.</p>
+  </div>
+
   <!-- STEP 1: Date + slot picker -->
   <div class="step active" id="step-1">
     <div class="month-nav">
@@ -289,12 +312,10 @@
       <div class="field"><label>Apellido</label><input type="text" id="f-last" autocomplete="family-name" required /></div>
     </div>
     <div class="field"><label>Email</label><input type="email" id="f-email" autocomplete="email" required /></div>
-    <div class="field"><label>Teléfono</label><input type="tel" id="f-phone" autocomplete="tel" required /></div>
+    <div class="field"><label>Teléfono</label><input type="tel" id="f-phone" autocomplete="tel" inputmode="tel" placeholder="+54 11 1234-5678" required /></div>
     <div class="field"><label>Mensaje (opcional)</label><textarea id="f-notes" placeholder="¿Sobre qué proyecto querés consultar?"></textarea></div>
 
-    <div class="turnstile-wrap">
-      <div class="cf-turnstile" data-sitekey="0x4AAAAADrgY0jZ09Qpl0IO" data-callback="onTurnstileSuccess" data-theme="light"></div>
-    </div>
+    <div class="cf-turnstile" data-sitekey="0x4AAAAADrgY0jZ09Qpl0IO" data-callback="onTurnstileSuccess" data-size="invisible"></div>
 
     <button class="submit-btn" id="btn-submit" disabled>Confirmar reunión</button>
     <div class="error-msg" id="error-msg"></div>
@@ -324,14 +345,35 @@ let currentMonth, selectedDate, selectedSlot, allSlots = {}, turnstileToken = nu
 // ── Turnstile callback ──
 window.onTurnstileSuccess = (token) => {
   turnstileToken = token;
-  document.getElementById("btn-submit").disabled = false;
+  // If submit was pending, fire it now
+  if (window._submitPending) {
+    window._submitPending = false;
+    document.getElementById("btn-submit").click();
+  }
 };
 
 // ── Calendar ──
 function initCalendar() {
-  const now = new Date();
-  currentMonth = { year: now.getFullYear(), month: now.getMonth() };
+  const now = new Date(); now.setHours(0,0,0,0);
+  // If today is a weekend or the last weekday of the month, start on next month
+  const remaining = getRemainingWeekdays(now.getFullYear(), now.getMonth(), now);
+  if (remaining === 0) {
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    currentMonth = { year: next.getFullYear(), month: next.getMonth() };
+  } else {
+    currentMonth = { year: now.getFullYear(), month: now.getMonth() };
+  }
   renderCalendar();
+}
+
+function getRemainingWeekdays(year, month, from) {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  let count = 0;
+  for (let d = from.getDate(); d <= daysInMonth; d++) {
+    const day = new Date(year, month, d).getDay();
+    if (day !== 0 && day !== 6) count++;
+  }
+  return count;
 }
 
 function renderCalendar() {
@@ -441,6 +483,8 @@ document.getElementById("btn-to-form").addEventListener("click", () => {
   document.getElementById("slot-summary").textContent =
     `${formatDateLong(selectedDate)} · ${formatTime(selectedSlot.start)} – ${formatTime(selectedSlot.end)}`;
   showStep("step-2");
+  // Enable submit immediately — Turnstile invisible fires callback automatically
+  document.getElementById("btn-submit").disabled = false;
 });
 
 document.getElementById("btn-back").addEventListener("click", () => showStep("step-1"));
@@ -461,8 +505,18 @@ document.getElementById("btn-submit").addEventListener("click", async () => {
     showError("Completá todos los campos obligatorios.");
     return;
   }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showError("Ingresá un email válido.");
+    return;
+  }
+  if (!/^[\d\s+\-().]{5,}$/.test(phone)) {
+    showError("Ingresá un número de teléfono válido.");
+    return;
+  }
   if (!turnstileToken) {
-    showError("Completá la verificación de seguridad.");
+    // Invisible Turnstile: execute challenge, then retry on callback
+    window._submitPending = true;
+    try { turnstile.execute(); } catch(e) { showError("Error de verificación. Intentá de nuevo."); }
     return;
   }
 
@@ -489,6 +543,8 @@ document.getElementById("btn-submit").addEventListener("click", async () => {
     if (res.status === 409) {
       showError("Ese horario ya fue reservado. Elegí otro.");
       allSlots[selectedDate] = null;
+      turnstileToken = null;
+      try { turnstile.reset(); } catch(e) {}
       btn.disabled = false;
       btn.textContent = "Confirmar reunión";
       return;
@@ -506,6 +562,8 @@ document.getElementById("btn-submit").addEventListener("click", async () => {
     showStep("step-3");
   } catch {
     showError("Ocurrió un error. Intentá de nuevo.");
+    turnstileToken = null;
+    try { turnstile.reset(); } catch(e) {}
     btn.disabled = false;
     btn.textContent = "Confirmar reunión";
   }
