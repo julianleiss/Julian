@@ -174,7 +174,7 @@
       letter-spacing: 0.1em;
       color: var(--brown-mid);
     }
-    .field input, .field textarea {
+    .field input, .field textarea, .field select {
       font-family: inherit;
       font-size: 14px;
       padding: 10px 0;
@@ -187,9 +187,28 @@
       width: 100%;
       color: var(--brown);
     }
-    .field input:focus, .field textarea:focus { border-bottom-color: var(--brown); }
+    .field input:focus, .field textarea:focus, .field select:focus { border-bottom-color: var(--brown); }
     .field input::placeholder, .field textarea::placeholder { color: var(--brown-mid); }
     .field textarea { resize: none; height: 72px; }
+    .field select {
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2361412D' stroke-width='1.2' fill='none'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 2px center;
+      padding-right: 20px;
+    }
+
+    /* Inline field validation */
+    .field input.invalid, .field select.invalid { border-bottom-color: var(--orange); }
+    .field-error {
+      font-size: 11px;
+      color: var(--orange);
+      letter-spacing: 0.02em;
+      display: none;
+    }
+    .field-error.visible { display: block; }
 
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 
@@ -255,6 +274,20 @@
       text-decoration: none;
     }
     .success a:hover { text-decoration: underline; }
+
+    /* ── Mobile ── */
+    @media (max-width: 480px) {
+      .booking { padding: 20px 16px 32px; }
+      /* Two columns of slots fit comfortably; three are too cramped to tap. */
+      .slots-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .slot-btn { padding: 13px 6px; font-size: 13px; }
+      /* Nombre / Apellido stack instead of squeezing side by side. */
+      .field-row { grid-template-columns: 1fr; gap: 0; }
+      /* 16px prevents iOS Safari from zooming in on focus. */
+      .field input, .field textarea, .field select { font-size: 16px; }
+      .cal-day { font-size: 14px; }
+      .submit-btn { padding: 17px; }
+    }
   </style>
 </head>
 <body>
@@ -287,10 +320,26 @@
       <div class="field"><label>Apellido</label><input type="text" id="f-last" autocomplete="family-name" required /></div>
     </div>
     <div class="field"><label>Email</label><input type="email" id="f-email" autocomplete="email" required /></div>
-    <div class="field"><label>Teléfono</label><input type="tel" id="f-phone" autocomplete="tel" inputmode="numeric" placeholder="+54 11 1234-5678" required onkeypress="return /[\d\s+\-()+]/.test(event.key)" /></div>
+    <div class="field"><label>Teléfono</label><input type="tel" id="f-phone" autocomplete="tel" inputmode="tel" placeholder="+54 11 1234-5678" required /></div>
+    <div class="field"><label>¿Qué ambientes te interesan?</label>
+      <select id="f-rooms">
+        <option value="">Sin preferencia</option>
+        <option value="Monoambiente">Monoambiente</option>
+        <option value="2 ambientes">2 ambientes</option>
+        <option value="3 ambientes">3 ambientes</option>
+        <option value="4 ambientes o más">4 ambientes o más</option>
+      </select>
+    </div>
     <div class="field"><label>Mensaje (opcional)</label><textarea id="f-notes" placeholder="¿Sobre qué proyecto querés consultar?"></textarea></div>
 
-    <div class="cf-turnstile" data-sitekey="0x4AAAAADrgY0jZ09Qpl0IO" data-callback="onTurnstileSuccess" data-size="invisible"></div>
+    <div id="turnstile-widget"
+       class="cf-turnstile"
+       data-sitekey="0x4AAAAADrgY0jZ09Qpl0IO"
+       data-callback="onTurnstileSuccess"
+       data-error-callback="onTurnstileError"
+       data-expired-callback="onTurnstileExpired"
+       data-appearance="interaction-only"
+       data-size="flexible"></div>
 
     <button class="submit-btn" id="btn-submit" disabled>Confirmar reunión</button>
     <div class="error-msg" id="error-msg"></div>
@@ -317,14 +366,38 @@ const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto
 
 let currentMonth, selectedDate, selectedSlot, allSlots = {}, turnstileToken = null;
 
-// ── Turnstile callback ──
+// ── Turnstile callbacks ──
+// The submit button must NEVER stay disabled because of the captcha. If Turnstile
+// fails to load, is misconfigured, or errors out, degrade gracefully: the booking
+// still submits and the API decides whether to accept it.
+function enableSubmit() {
+  const btn = document.getElementById("btn-submit");
+  if (btn) btn.disabled = false;
+}
+
 window.onTurnstileSuccess = (token) => {
   turnstileToken = token;
-  document.getElementById("btn-submit").disabled = false;
+  enableSubmit();
   if (window._submitPending) {
     window._submitPending = false;
     document.getElementById("btn-submit").click();
   }
+};
+
+window.onTurnstileError = (code) => {
+  // 400020 = invalid sitekey. Don't trap the user behind a broken captcha.
+  console.warn("[booking] Turnstile error:", code);
+  turnstileToken = null;
+  enableSubmit();
+  if (window._submitPending) {
+    window._submitPending = false;
+    document.getElementById("btn-submit").click();
+  }
+};
+
+window.onTurnstileExpired = () => {
+  turnstileToken = null;
+  try { turnstile.reset(); } catch (e) {}
 };
 
 // ── Calendar ──
@@ -399,15 +472,21 @@ async function selectDate(ymd) {
 
   if (!allSlots[ymd]) {
     try {
-      const from = ymd;
-      const to = ymd;
+      // The API buckets slots by UTC day, but Buenos Aires is UTC-3: the local day
+      // spans two UTC days. Request a window around the date and then keep only the
+      // slots that actually fall on the selected LOCAL day.
       const url = new URL(`${API_BASE}/api/public/v1/bookings/slots`);
-      url.searchParams.set("from", from);
-      url.searchParams.set("to", to);
+      url.searchParams.set("from", shiftYMD(ymd, -1));
+      url.searchParams.set("to", shiftYMD(ymd, 1));
       const res = await fetch(url, { headers: { "X-Intake-Token": TOKEN } });
       if (!res.ok) throw new Error(res.status);
       const data = await res.json();
-      allSlots[ymd] = data.slots.filter(s => s.available);
+      const now = Date.now();
+      allSlots[ymd] = data.slots.filter(s =>
+        s.available &&
+        localYMD(s.start) === ymd &&
+        new Date(s.start).getTime() > now // never offer a slot in the past
+      );
     } catch {
       grid.innerHTML = `<span class="slots-empty">No se pudieron cargar los horarios.</span>`;
       return;
@@ -455,18 +534,20 @@ document.getElementById("next-month").addEventListener("click", () => {
 });
 
 document.getElementById("btn-to-form").addEventListener("click", () => {
-  document.getElementById("slot-summary").textContent =
-    `${formatDateLong(selectedDate)} · ${formatTime(selectedSlot.start)} – ${formatTime(selectedSlot.end)}`;
+  if (!selectedDate || !selectedSlot) return;
+  // Enable submit FIRST: no later failure (date formatting, captcha) may ever leave
+  // the user on step 2 with a dead "Confirmar reunión" button.
+  enableSubmit();
   showStep("step-2");
-  // Execute invisible Turnstile now — button enables when token arrives in callback
-  if (!turnstileToken) {
-    try { turnstile.execute(); } catch(e) {
-      // Turnstile not ready yet — retry once it loads
-      document.getElementById("btn-submit").disabled = false;
-    }
-  } else {
-    document.getElementById("btn-submit").disabled = false;
+  try {
+    document.getElementById("slot-summary").textContent =
+      `${formatDateLong(selectedDate)} · ${formatTime(selectedSlot.start)} – ${formatTime(selectedSlot.end)}`;
+  } catch (e) {
+    console.warn("[booking] slot summary failed:", e);
   }
+  // The widget only shows a challenge if Cloudflare asks for one
+  // (appearance="interaction-only"); field validation happens on click.
+  setTimeout(enableSubmit, 2500);
 });
 
 document.getElementById("btn-back").addEventListener("click", () => showStep("step-1"));
@@ -481,29 +562,13 @@ document.getElementById("btn-submit").addEventListener("click", async () => {
   const last = document.getElementById("f-last").value.trim();
   const email = document.getElementById("f-email").value.trim();
   const phone = document.getElementById("f-phone").value.trim();
+  const rooms = document.getElementById("f-rooms").value;
   const notes = document.getElementById("f-notes").value.trim();
 
-  if (!name || !last || !email || !phone) {
-    showError("Completá todos los campos obligatorios.");
+  if (!validateAll()) {
+    showError("Revisá los campos marcados.");
     return;
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    showError("Ingresá un email válido.");
-    return;
-  }
-  if (!/^[\d\s+\-().]{5,}$/.test(phone)) {
-    showError("Ingresá un número de teléfono válido.");
-    return;
-  }
-  if (!turnstileToken) {
-    // Token not ready yet — execute and wait for callback to retry
-    window._submitPending = true;
-    try { turnstile.execute(); } catch(e) {
-      showError("Error de verificación. Recargá la página e intentá de nuevo.");
-    }
-    return;
-  }
-
   btn.disabled = true;
   btn.textContent = "Confirmando...";
 
@@ -513,10 +578,12 @@ document.getElementById("btn-submit").addEventListener("click", async () => {
       headers: { "Content-Type": "application/json", "X-Intake-Token": TOKEN },
       body: JSON.stringify({
         name, last, email, phone,
-        notes: notes || null,
+        rooms: rooms || null,
+        notes: [rooms ? `Ambientes de interés: ${rooms}` : null, notes || null]
+          .filter(Boolean).join("\n") || null,
         start_time: selectedSlot.start,
         end_time: selectedSlot.end,
-        turnstile_token: turnstileToken,
+        turnstile_token: turnstileToken || null,
         dedupe_key: crypto.randomUUID(),
         landing_url: window.location.href,
         referrer_url: document.referrer || null,
@@ -553,18 +620,136 @@ document.getElementById("btn-submit").addEventListener("click", async () => {
   }
 });
 
+// ── Field validation ──
+// Rules are checked on submit and re-checked live once a field has been touched,
+// so the user sees the problem next to the field instead of a generic banner.
+const VALIDATORS = {
+  "f-name":  v => v.trim().length >= 2 || "Ingresá tu nombre.",
+  "f-last":  v => v.trim().length >= 2 || "Ingresá tu apellido.",
+  "f-email": v => /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(v.trim()) || "Ingresá un email válido.",
+  // Must contain 8–15 real digits; letters and symbol-only input are rejected.
+  "f-phone": v => {
+    const raw = v.trim();
+    if (/[^\d\s+\-().]/.test(raw)) return "El teléfono solo puede tener números.";
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length < 8) return "El número es demasiado corto.";
+    if (digits.length > 15) return "El número es demasiado largo.";
+    return true;
+  },
+};
+
+function setFieldError(id, msg) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  let el = input.parentElement.querySelector(".field-error");
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "field-error";
+    input.parentElement.appendChild(el);
+  }
+  if (msg) {
+    el.textContent = msg;
+    el.classList.add("visible");
+    input.classList.add("invalid");
+  } else {
+    el.classList.remove("visible");
+    input.classList.remove("invalid");
+  }
+}
+
+function validateField(id) {
+  const input = document.getElementById(id);
+  if (!input) return true;
+  const result = VALIDATORS[id](input.value);
+  setFieldError(id, result === true ? null : result);
+  return result === true;
+}
+
+function validateAll() {
+  // Validate every field so all errors surface at once, not one at a time.
+  return Object.keys(VALIDATORS).map(validateField).every(Boolean);
+}
+
+Object.keys(VALIDATORS).forEach(id => {
+  const input = document.getElementById(id);
+  if (!input) return;
+  input.addEventListener("blur", () => validateField(id));
+  input.addEventListener("input", () => {
+    // Only nag after the field has already been flagged once.
+    if (input.classList.contains("invalid")) validateField(id);
+  });
+});
+
+// Strip characters the phone field must never contain (paste, autofill, mobile IME).
+document.getElementById("f-phone").addEventListener("input", (e) => {
+  const cleaned = e.target.value.replace(/[^\d\s+\-().]/g, "");
+  if (cleaned !== e.target.value) {
+    const pos = e.target.selectionStart - (e.target.value.length - cleaned.length);
+    e.target.value = cleaned;
+    try { e.target.setSelectionRange(pos, pos); } catch (err) {}
+  }
+});
+
 // ── Helpers ──
 function showStep(id) {
   document.querySelectorAll(".step").forEach(s => s.classList.remove("active"));
   document.getElementById(id).classList.add("active");
+  notifyHeight();
+  // Inside the Framer iframe the parent page keeps its own scroll position, so
+  // bring the newly shown step into view.
+  try {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: "booking:step", step: id }, "*");
+    }
+  } catch (e) {}
 }
+
+// ── Framer iframe auto-height ──
+// The embed is an <iframe> with a fixed height; each step has a different height,
+// so publish ours and let the parent resize. Framer's Embed component listens for
+// this message shape.
+function notifyHeight() {
+  if (window.parent === window) return;
+  const h = Math.ceil(document.querySelector(".booking").getBoundingClientRect().height) + 16;
+  try {
+    window.parent.postMessage({ type: "booking:height", height: h }, "*");
+    // iframe-resizer / Framer-compatible fallbacks
+    window.parent.postMessage(`booking-height:${h}`, "*");
+  } catch (e) {}
+}
+
+if (typeof ResizeObserver !== "undefined") {
+  new ResizeObserver(notifyHeight).observe(document.querySelector(".booking"));
+}
+window.addEventListener("load", notifyHeight);
 function showError(msg) {
   const el = document.getElementById("error-msg");
   el.textContent = msg;
   el.classList.add("visible");
 }
+const TZ = "America/Argentina/Buenos_Aires";
+
+// Local calendar date of a Date object — never toISOString(), which shifts to UTC.
 function toYMD(date) {
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// Which Buenos Aires calendar day an ISO instant falls on.
+function localYMD(iso) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date(iso));
+  return parts; // en-CA formats as YYYY-MM-DD
+}
+
+function shiftYMD(ymd, days) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const date = new Date(y, m - 1, d + days);
+  return toYMD(date);
 }
 function formatTime(iso) {
   const d = new Date(iso);
