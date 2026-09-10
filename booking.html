@@ -334,7 +334,7 @@
 
     <div id="turnstile-widget"
        class="cf-turnstile"
-       data-sitekey="0x4AAAAAADrgY0jZ09Qpl0lO"
+       data-sitekey="0x4AAAAAADEfR6MeeHhRelbY"
        data-callback="onTurnstileSuccess"
        data-error-callback="onTurnstileError"
        data-expired-callback="onTurnstileExpired"
@@ -377,6 +377,7 @@ function enableSubmit() {
 
 window.onTurnstileSuccess = (token) => {
   turnstileToken = token;
+  clearTimeout(window._turnstileTimer);
   enableSubmit();
   if (window._submitPending) {
     window._submitPending = false;
@@ -385,13 +386,19 @@ window.onTurnstileSuccess = (token) => {
 };
 
 window.onTurnstileError = (code) => {
-  // 400020 = invalid sitekey. Don't trap the user behind a broken captcha.
+  // 400020 = invalid sitekey, etc. The API rejects a booking without a token,
+  // so we can't submit anyway — surface it instead of retrying into a 422.
   console.warn("[booking] Turnstile error:", code);
   turnstileToken = null;
-  enableSubmit();
+  clearTimeout(window._turnstileTimer);
+  const btn = document.getElementById("btn-submit");
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = "Confirmar reunión";
+  }
   if (window._submitPending) {
     window._submitPending = false;
-    document.getElementById("btn-submit").click();
+    showError("No pudimos verificar que no sos un robot. Recargá la página e intentá de nuevo.");
   }
 };
 
@@ -569,6 +576,37 @@ document.getElementById("btn-submit").addEventListener("click", async () => {
     showError("Revisá los campos marcados.");
     return;
   }
+
+  // The API REQUIRES a non-empty turnstile_token (a null or "" is rejected with
+  // a 422), so we cannot submit without one. If the token has not arrived yet,
+  // ask Turnstile for it and let its callback re-trigger this click.
+  if (!turnstileToken) {
+    btn.disabled = true;
+    btn.textContent = "Verificando...";
+    window._submitPending = true;
+    try {
+      turnstile.execute();
+    } catch (e) {
+      window._submitPending = false;
+      btn.disabled = false;
+      btn.textContent = "Confirmar reunión";
+      showError("No pudimos verificar que no sos un robot. Recargá la página e intentá de nuevo.");
+      return;
+    }
+    // If the captcha never answers, tell the user instead of hanging on "Verificando...".
+    clearTimeout(window._turnstileTimer);
+    window._turnstileTimer = setTimeout(() => {
+      if (window._submitPending) {
+        window._submitPending = false;
+        btn.disabled = false;
+        btn.textContent = "Confirmar reunión";
+        showError("La verificación no respondió. Recargá la página e intentá de nuevo.");
+      }
+    }, 12000);
+    return;
+  }
+
+  clearTimeout(window._turnstileTimer);
   btn.disabled = true;
   btn.textContent = "Confirmando...";
 
@@ -583,7 +621,7 @@ document.getElementById("btn-submit").addEventListener("click", async () => {
           .filter(Boolean).join("\n") || null,
         start_time: selectedSlot.start,
         end_time: selectedSlot.end,
-        turnstile_token: turnstileToken || null,
+        turnstile_token: turnstileToken,
         dedupe_key: crypto.randomUUID(),
         landing_url: window.location.href,
         referrer_url: document.referrer || null,
