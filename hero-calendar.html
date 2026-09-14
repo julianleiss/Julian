@@ -19,20 +19,22 @@
       --dim: rgba(97,65,45,0.45);
     }
 
+    html, body { height: 100%; }
     body {
       font-family: "Apercu Pro", "Apercu", "Inter", -apple-system, sans-serif;
-      background: transparent;
+      background: var(--cream);
       color: var(--brown);
       font-size: 15px;
       line-height: 1.5;
     }
 
     .hero-cal {
-      max-width: 380px;
-      margin: 0 auto;
-      padding: 24px 20px 28px;
+      /* Fill the iframe edge-to-edge; the embed rounds the corners so there is a
+         single, even radius instead of a rounded card inside a square frame. */
+      width: 100%;
+      margin: 0;
+      padding: 24px 22px 28px;
       background: var(--cream);
-      border-radius: 12px;
     }
 
     .hc-title {
