@@ -10,19 +10,19 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
+      --brown: #61412D;
       --cream: #FCF2E8;
       --orange: #FE5538;
-      --navy: #040D2A;
-      /* On the dark hero everything is drawn in cream at varying opacity. */
-      --line: rgba(252,242,232,0.16);
-      --line-strong: rgba(252,242,232,0.32);
-      --dim: rgba(252,242,232,0.45);
+      /* Cream card, so everything is drawn in brown at varying opacity. */
+      --line: rgba(97,65,45,0.15);
+      --line-strong: rgba(97,65,45,0.35);
+      --dim: rgba(97,65,45,0.45);
     }
 
     body {
       font-family: "Apercu Pro", "Apercu", "Inter", -apple-system, sans-serif;
       background: transparent;
-      color: var(--cream);
+      color: var(--brown);
       font-size: 15px;
       line-height: 1.5;
     }
@@ -31,6 +31,8 @@
       max-width: 380px;
       margin: 0 auto;
       padding: 24px 20px 28px;
+      background: var(--cream);
+      border-radius: 12px;
     }
 
     .hc-title {
@@ -56,7 +58,7 @@
       border: none;
       cursor: pointer;
       font-size: 18px;
-      color: var(--cream);
+      color: var(--brown);
       padding: 4px 8px;
       line-height: 1;
       font-family: inherit;
@@ -67,7 +69,7 @@
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.1em;
-      color: var(--cream);
+      color: var(--brown);
     }
 
     /* ── Grid ── */
@@ -95,12 +97,12 @@
       cursor: pointer;
       border: none;
       background: none;
-      color: var(--cream);
+      color: var(--brown);
       font-family: inherit;
       transition: background 0.15s, color 0.15s;
       position: relative;
     }
-    .cal-day:hover:not(:disabled) { background: rgba(252,242,232,0.12); }
+    .cal-day:hover:not(:disabled) { background: rgba(97,65,45,0.12); }
     /* A dot under the number marks days that have open slots. */
     .cal-day.has-slots::after {
       content: "";
@@ -113,7 +115,7 @@
       background: var(--orange);
     }
     .cal-day.today { font-weight: 700; color: var(--orange); }
-    .cal-day:disabled { color: rgba(252,242,232,0.18); cursor: default; }
+    .cal-day:disabled { color: rgba(97,65,45,0.2); cursor: default; }
     .cal-day.empty { cursor: default; }
 
     .hc-hint {
