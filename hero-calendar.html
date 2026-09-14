@@ -117,6 +117,8 @@
       background: var(--orange);
     }
     .cal-day.today { font-weight: 700; color: var(--orange); }
+    .cal-day.selected { background: var(--brown); color: var(--cream); }
+    .cal-day.selected::after { background: var(--cream); }
     .cal-day:disabled { color: rgba(97,65,45,0.2); cursor: default; }
     .cal-day.empty { cursor: default; }
 
@@ -128,11 +130,51 @@
       min-height: 16px;
     }
 
+    /* ── Slots (shown once a day is picked) ── */
+    .slots-wrap {
+      margin-top: 18px;
+      border-top: 1px solid var(--line);
+      padding-top: 16px;
+      display: none;
+    }
+    .slots-wrap.visible { display: block; }
+    .slots-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dim);
+      margin-bottom: 12px;
+    }
+    .slots-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      min-height: 42px;
+    }
+    .slot-btn {
+      padding: 10px 6px;
+      border: 1px solid var(--line);
+      background: transparent;
+      font-size: 12px;
+      font-family: inherit;
+      color: var(--brown);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
+      text-align: center;
+      letter-spacing: 0.02em;
+      border-radius: 4px;
+    }
+    .slot-btn:hover { border-color: var(--brown); }
+    .slots-empty { font-size: 12px; color: var(--dim); grid-column: 1/-1; padding: 6px 0; }
+
     /* Mobile: the calendar is replaced in Framer by a button, but if this file is
        ever shown directly on a small screen, keep it legible. */
     @media (max-width: 420px) {
       .hero-cal { max-width: 100%; padding: 18px 14px 22px; }
       .cal-day { font-size: 14px; }
+      .slots-grid { grid-template-columns: repeat(2, 1fr); }
+      .slot-btn { padding: 12px 6px; font-size: 13px; }
     }
   </style>
 </head>
@@ -149,6 +191,11 @@
   <div class="calendar-grid" id="calendar-grid"></div>
 
   <div class="hc-hint" id="hc-hint">Elegí un día para ver horarios.</div>
+
+  <div class="slots-wrap" id="slots-wrap">
+    <div class="slots-label" id="slots-label">Horarios disponibles</div>
+    <div class="slots-grid" id="slots-grid"></div>
+  </div>
 </div>
 
 <script>
@@ -158,14 +205,15 @@ const DAYS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const TZ = "America/Argentina/Buenos_Aires";
 
-// Where the full booking widget lives on the site. Clicking a day sends the
-// visitor here (adding ?date=YYYY-MM-DD so the widget can preselect the day).
+// Where the full booking widget lives on the site. Choosing a time sends the
+// visitor here (with ?date & ?time so the widget preselects day + slot).
 const AGENDAR_HASH = "#agendar";
 
-let currentMonth;
-// Cache of which local days in a given month have at least one open slot:
-// availabilityByMonth["2026-09"] = Set("2026-09-10", ...).
-const availabilityByMonth = {};
+let currentMonth, selectedDate = null;
+// Per-month cache of the open slots, keyed by local day:
+// slotsByMonth["2026-09"] = { "2026-09-10": [slot, ...], ... }.
+// A day is "available" iff its array is present and non-empty.
+const slotsByMonth = {};
 
 // ── Calendar ──
 function initCalendar() {
@@ -205,7 +253,7 @@ function renderCalendar() {
   document.getElementById("prev-month").disabled = isCurrentMonth;
 
   const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const avail = availabilityByMonth[monthKey];
+  const byDay = slotsByMonth[monthKey];
 
   const grid = document.getElementById("calendar-grid");
   grid.innerHTML = DAYS.map(d => `<div class="cal-header">${d}</div>`).join("");
@@ -220,23 +268,58 @@ function renderCalendar() {
     const isToday = date.toDateString() === now.toDateString();
     const ymd = toYMD(date);
     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-    const hasSlots = avail ? avail.has(ymd) : false;
+    const hasSlots = byDay ? (byDay[ymd] || []).length > 0 : false;
+    const isSelected = selectedDate === ymd;
 
-    grid.innerHTML += `<button class="cal-day${isToday ? " today" : ""}${hasSlots ? " has-slots" : ""}"
+    grid.innerHTML += `<button class="cal-day${isToday ? " today" : ""}${hasSlots ? " has-slots" : ""}${isSelected ? " selected" : ""}"
       ${isPast || isWeekend ? "disabled" : ""}
       data-date="${ymd}">${d}</button>`;
   }
 
   grid.querySelectorAll(".cal-day[data-date]").forEach(btn => {
-    btn.addEventListener("click", () => goToAgendar(btn.dataset.date));
+    btn.addEventListener("click", () => selectDay(btn.dataset.date));
   });
 }
 
-// Fetch the whole visible month's slots once and mark which local days are open.
+// ── Day picked → show that day's slots inline ──
+async function selectDay(ymd) {
+  selectedDate = ymd;
+  renderCalendar(); // reflect the .selected ring
+
+  const wrap = document.getElementById("slots-wrap");
+  const grid = document.getElementById("slots-grid");
+  const hint = document.getElementById("hc-hint");
+  hint.textContent = capitalize(formatDateLong(ymd));
+  wrap.classList.add("visible");
+  grid.innerHTML = `<span class="slots-empty">Cargando horarios…</span>`;
+
+  const monthKey = ymd.slice(0, 7);
+  // Slots for the whole month are usually already loaded (availability pass); if a
+  // month was never fetched, load it now.
+  if (!slotsByMonth[monthKey]) await loadAvailability();
+  const slots = (slotsByMonth[monthKey] || {})[ymd] || [];
+
+  if (slots.length === 0) {
+    grid.innerHTML = `<span class="slots-empty">Sin disponibilidad este día.</span>`;
+    notifyHeight();
+    return;
+  }
+
+  grid.innerHTML = slots.map((s, i) =>
+    `<button class="slot-btn" data-i="${i}">${formatTime(s.start)}</button>`
+  ).join("");
+  grid.querySelectorAll(".slot-btn").forEach(btn => {
+    btn.addEventListener("click", () => goToAgendar(ymd, slots[+btn.dataset.i].start));
+  });
+  notifyHeight();
+}
+
+// Fetch the whole visible month's slots once, bucketed by local day. Used both
+// for the availability dots and for the inline slot list when a day is picked.
 async function loadAvailability() {
   const { year, month } = currentMonth;
   const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-  if (availabilityByMonth[monthKey]) { renderCalendar(); return; }
+  if (slotsByMonth[monthKey]) { renderCalendar(); return; }
 
   const first = `${monthKey}-01`;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -251,18 +334,20 @@ async function loadAvailability() {
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
     const now = Date.now();
-    const set = new Set();
+    const byDay = {};
     (data.slots || []).forEach(s => {
       if (s.available && new Date(s.start).getTime() > now) {
-        set.add(localYMD(s.start));
+        const day = localYMD(s.start);
+        (byDay[day] || (byDay[day] = [])).push(s);
       }
     });
-    availabilityByMonth[monthKey] = set;
+    // Keep each day's slots in chronological order.
+    Object.values(byDay).forEach(arr => arr.sort((a, b) => new Date(a.start) - new Date(b.start)));
+    slotsByMonth[monthKey] = byDay;
   } catch {
-    // Availability dots are a nice-to-have: on error just leave days clickable
-    // (the full widget re-checks and shows real availability). Cache an empty set
-    // so we don't refetch on every re-render.
-    availabilityByMonth[monthKey] = new Set();
+    // On error cache an empty map so we don't refetch on every re-render; the
+    // day still opens and shows "sin disponibilidad".
+    slotsByMonth[monthKey] = {};
   }
   renderCalendar();
 }
@@ -271,28 +356,37 @@ async function loadAvailability() {
 document.getElementById("prev-month").addEventListener("click", () => {
   currentMonth.month--;
   if (currentMonth.month < 0) { currentMonth.month = 11; currentMonth.year--; }
+  resetSelection();
   renderCalendar();
   loadAvailability();
 });
 document.getElementById("next-month").addEventListener("click", () => {
   currentMonth.month++;
   if (currentMonth.month > 11) { currentMonth.month = 0; currentMonth.year++; }
+  resetSelection();
   renderCalendar();
   loadAvailability();
 });
 
-// ── Hand off to the full widget ──
-// This file lives in an iframe inside the Framer hero. Clicking a day should take
-// the whole page (not the iframe) to the #agendar section, carrying the chosen day.
-function goToAgendar(ymd) {
-  document.getElementById("hc-hint").textContent = "Abriendo horarios…";
-  const target = AGENDAR_HASH + (ymd ? `?date=${ymd}` : "");
+// Changing month clears the open slot list — its day no longer belongs to the view.
+function resetSelection() {
+  selectedDate = null;
+  document.getElementById("slots-wrap").classList.remove("visible");
+  document.getElementById("hc-hint").textContent = "Elegí un día para ver horarios.";
+}
+
+// ── Time chosen → hand off to the full widget ──
+// This file lives in an iframe inside the Framer hero. Picking a time takes the
+// whole page (not the iframe) to the #agendar section, carrying day + time so the
+// full widget opens straight on the contact form.
+function goToAgendar(ymd, startIso) {
+  const params = `date=${ymd}` + (startIso ? `&time=${encodeURIComponent(startIso)}` : "");
+  const target = AGENDAR_HASH + "?" + params;
   try {
     if (window.parent !== window) {
-      // Framer can listen for this and scroll to / preselect the date.
-      window.parent.postMessage({ type: "hero:agendar", date: ymd }, "*");
-      // Fallback: drive the top window's hash directly. Works when the iframe is
-      // same-origin OR when the parent allows it; harmless otherwise.
+      window.parent.postMessage({ type: "hero:agendar", date: ymd, time: startIso || null }, "*");
+      // Fallback: drive the top window's hash directly (works same-origin or when
+      // the parent allows it; harmless otherwise).
       try { window.top.location.hash = target.slice(1); } catch (e) {}
     } else {
       window.location.hash = target.slice(1);
@@ -333,6 +427,18 @@ function shiftYMD(ymd, days) {
   const date = new Date(y, m - 1, d + days);
   return toYMD(date);
 }
+function formatTime(iso) {
+  return new Date(iso).toLocaleTimeString("es-AR", {
+    hour: "2-digit", minute: "2-digit", timeZone: TZ,
+  });
+}
+function formatDateLong(ymd) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("es-AR", {
+    weekday: "long", day: "numeric", month: "long",
+  });
+}
+function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 initCalendar();
 </script>

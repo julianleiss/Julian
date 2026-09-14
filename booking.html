@@ -422,11 +422,13 @@ function initCalendar() {
   maybePreselectFromURL();
 }
 
-// The hero mini-calendar sends the visitor here with ?date=YYYY-MM-DD. If that day
-// is a bookable weekday in the future, open its month and load its slots so the
-// visitor lands exactly where they tapped.
-function maybePreselectFromURL() {
-  const raw = new URLSearchParams(window.location.search).get("date");
+// The hero mini-calendar sends the visitor here with ?date=YYYY-MM-DD (and
+// optionally ?time=<ISO start>). Open that day, load its slots, and — if a time
+// was passed and still available — preselect it and jump straight to the form.
+async function maybePreselectFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("date");
+  const timeIso = params.get("time");
   if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
   const [y, m, d] = raw.split("-").map(Number);
   const date = new Date(y, m - 1, d);
@@ -436,7 +438,16 @@ function maybePreselectFromURL() {
   if (date < today || isWeekend) return;
   currentMonth = { year: y, month: m - 1 };
   renderCalendar();
-  selectDate(raw);
+  await selectDate(raw);
+
+  if (!timeIso) return;
+  // Match the passed slot against the ones that actually loaded; only advance if
+  // it's real and still free, otherwise leave the visitor on the slot picker.
+  const match = (allSlots[raw] || []).find(s => s.start === timeIso);
+  if (!match) return;
+  selectedSlot = match;
+  document.getElementById("btn-to-form").disabled = false;
+  document.getElementById("btn-to-form").click();
 }
 
 function getRemainingWeekdays(year, month, from) {
