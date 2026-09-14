@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agendá una visita — Julián</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream: #FCF2E8;
+      --orange: #FE5538;
+      --navy: #040D2A;
+      /* On the dark hero everything is drawn in cream at varying opacity. */
+      --line: rgba(252,242,232,0.16);
+      --line-strong: rgba(252,242,232,0.32);
+      --dim: rgba(252,242,232,0.45);
+    }
+
+    body {
+      font-family: "Apercu Pro", "Apercu", "Inter", -apple-system, sans-serif;
+      background: transparent;
+      color: var(--cream);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .hero-cal {
+      max-width: 380px;
+      margin: 0 auto;
+      padding: 24px 20px 28px;
+    }
+
+    .hc-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--dim);
+      margin-bottom: 18px;
+    }
+
+    /* ── Month nav ── */
+    .month-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 14px;
+    }
+    .month-nav button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      color: var(--cream);
+      padding: 4px 8px;
+      line-height: 1;
+      font-family: inherit;
+    }
+    .month-nav button:disabled { opacity: 0.2; cursor: default; }
+    .month-label {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--cream);
+    }
+
+    /* ── Grid ── */
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 2px;
+    }
+    .cal-header {
+      text-align: center;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--dim);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 6px 0;
+    }
+    .cal-day {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+      background: none;
+      color: var(--cream);
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+      position: relative;
+    }
+    .cal-day:hover:not(:disabled) { background: rgba(252,242,232,0.12); }
+    /* A dot under the number marks days that have open slots. */
+    .cal-day.has-slots::after {
+      content: "";
+      position: absolute;
+      bottom: 5px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: var(--orange);
+    }
+    .cal-day.today { font-weight: 700; color: var(--orange); }
+    .cal-day:disabled { color: rgba(252,242,232,0.18); cursor: default; }
+    .cal-day.empty { cursor: default; }
+
+    .hc-hint {
+      margin-top: 16px;
+      font-size: 11px;
+      color: var(--dim);
+      letter-spacing: 0.02em;
+      min-height: 16px;
+    }
+
+    /* Mobile: the calendar is replaced in Framer by a button, but if this file is
+       ever shown directly on a small screen, keep it legible. */
+    @media (max-width: 420px) {
+      .hero-cal { max-width: 100%; padding: 18px 14px 22px; }
+      .cal-day { font-size: 14px; }
+    }
+  </style>
+</head>
+<body>
+<div class="hero-cal">
+  <div class="hc-title">Agendá una visita</div>
+
+  <div class="month-nav">
+    <button id="prev-month" aria-label="Mes anterior">‹</button>
+    <span class="month-label" id="month-label"></span>
+    <button id="next-month" aria-label="Mes siguiente">›</button>
+  </div>
+
+  <div class="calendar-grid" id="calendar-grid"></div>
+
+  <div class="hc-hint" id="hc-hint">Elegí un día para ver horarios.</div>
+</div>
+
+<script>
+const API_BASE = "https://api.cs-arquitectura.com";
+const TOKEN = "fb7ea7020b93b2d90f0fc357832fbe7ab20feb074ede1462aff9aac416f9257c";
+const DAYS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const TZ = "America/Argentina/Buenos_Aires";
+
+// Where the full booking widget lives on the site. Clicking a day sends the
+// visitor here (adding ?date=YYYY-MM-DD so the widget can preselect the day).
+const AGENDAR_HASH = "#agendar";
+
+let currentMonth;
+// Cache of which local days in a given month have at least one open slot:
+// availabilityByMonth["2026-09"] = Set("2026-09-10", ...).
+const availabilityByMonth = {};
+
+// ── Calendar ──
+function initCalendar() {
+  const now = new Date(); now.setHours(0,0,0,0);
+  // If no weekdays remain this month, start on the next one — same rule the full
+  // widget uses, so the two calendars agree on the first bookable month.
+  const remaining = getRemainingWeekdays(now.getFullYear(), now.getMonth(), now);
+  if (remaining === 0) {
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    currentMonth = { year: next.getFullYear(), month: next.getMonth() };
+  } else {
+    currentMonth = { year: now.getFullYear(), month: now.getMonth() };
+  }
+  renderCalendar();
+  loadAvailability();
+}
+
+function getRemainingWeekdays(year, month, from) {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  let count = 0;
+  for (let d = from.getDate(); d <= daysInMonth; d++) {
+    const day = new Date(year, month, d).getDay();
+    if (day !== 0 && day !== 6) count++;
+  }
+  return count;
+}
+
+function renderCalendar() {
+  const { year, month } = currentMonth;
+  document.getElementById("month-label").textContent = `${MONTHS[month]} ${year}`;
+
+  const now = new Date(); now.setHours(0,0,0,0);
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+  document.getElementById("prev-month").disabled = isCurrentMonth;
+
+  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const avail = availabilityByMonth[monthKey];
+
+  const grid = document.getElementById("calendar-grid");
+  grid.innerHTML = DAYS.map(d => `<div class="cal-header">${d}</div>`).join("");
+
+  for (let i = 0; i < firstDay; i++) {
+    grid.innerHTML += `<div class="cal-day empty"></div>`;
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const isPast = date < now;
+    const isToday = date.toDateString() === now.toDateString();
+    const ymd = toYMD(date);
+    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+    const hasSlots = avail ? avail.has(ymd) : false;
+
+    grid.innerHTML += `<button class="cal-day${isToday ? " today" : ""}${hasSlots ? " has-slots" : ""}"
+      ${isPast || isWeekend ? "disabled" : ""}
+      data-date="${ymd}">${d}</button>`;
+  }
+
+  grid.querySelectorAll(".cal-day[data-date]").forEach(btn => {
+    btn.addEventListener("click", () => goToAgendar(btn.dataset.date));
+  });
+}
+
+// Fetch the whole visible month's slots once and mark which local days are open.
+async function loadAvailability() {
+  const { year, month } = currentMonth;
+  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+  if (availabilityByMonth[monthKey]) { renderCalendar(); return; }
+
+  const first = `${monthKey}-01`;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const last = `${monthKey}-${String(daysInMonth).padStart(2, "0")}`;
+
+  try {
+    // Pad ±1 day for the UTC/BA offset, exactly like the full widget.
+    const url = new URL(`${API_BASE}/api/public/v1/bookings/slots`);
+    url.searchParams.set("from", shiftYMD(first, -1));
+    url.searchParams.set("to", shiftYMD(last, 1));
+    const res = await fetch(url, { headers: { "X-Intake-Token": TOKEN } });
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    const now = Date.now();
+    const set = new Set();
+    (data.slots || []).forEach(s => {
+      if (s.available && new Date(s.start).getTime() > now) {
+        set.add(localYMD(s.start));
+      }
+    });
+    availabilityByMonth[monthKey] = set;
+  } catch {
+    // Availability dots are a nice-to-have: on error just leave days clickable
+    // (the full widget re-checks and shows real availability). Cache an empty set
+    // so we don't refetch on every re-render.
+    availabilityByMonth[monthKey] = new Set();
+  }
+  renderCalendar();
+}
+
+// ── Navigation between months ──
+document.getElementById("prev-month").addEventListener("click", () => {
+  currentMonth.month--;
+  if (currentMonth.month < 0) { currentMonth.month = 11; currentMonth.year--; }
+  renderCalendar();
+  loadAvailability();
+});
+document.getElementById("next-month").addEventListener("click", () => {
+  currentMonth.month++;
+  if (currentMonth.month > 11) { currentMonth.month = 0; currentMonth.year++; }
+  renderCalendar();
+  loadAvailability();
+});
+
+// ── Hand off to the full widget ──
+// This file lives in an iframe inside the Framer hero. Clicking a day should take
+// the whole page (not the iframe) to the #agendar section, carrying the chosen day.
+function goToAgendar(ymd) {
+  document.getElementById("hc-hint").textContent = "Abriendo horarios…";
+  const target = AGENDAR_HASH + (ymd ? `?date=${ymd}` : "");
+  try {
+    if (window.parent !== window) {
+      // Framer can listen for this and scroll to / preselect the date.
+      window.parent.postMessage({ type: "hero:agendar", date: ymd }, "*");
+      // Fallback: drive the top window's hash directly. Works when the iframe is
+      // same-origin OR when the parent allows it; harmless otherwise.
+      try { window.top.location.hash = target.slice(1); } catch (e) {}
+    } else {
+      window.location.hash = target.slice(1);
+    }
+  } catch (e) {
+    window.location.href = "/" + target;
+  }
+}
+
+// ── Framer iframe auto-height ──
+function notifyHeight() {
+  if (window.parent === window) return;
+  const h = Math.ceil(document.querySelector(".hero-cal").getBoundingClientRect().height) + 8;
+  try {
+    window.parent.postMessage({ type: "booking:height", height: h }, "*");
+    window.parent.postMessage(`booking-height:${h}`, "*");
+  } catch (e) {}
+}
+if (typeof ResizeObserver !== "undefined") {
+  new ResizeObserver(notifyHeight).observe(document.querySelector(".hero-cal"));
+}
+window.addEventListener("load", notifyHeight);
+
+// ── Helpers (identical semantics to booking.html) ──
+function toYMD(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+function localYMD(iso) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date(iso)); // en-CA formats as YYYY-MM-DD
+}
+function shiftYMD(ymd, days) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const date = new Date(y, m - 1, d + days);
+  return toYMD(date);
+}
+
+initCalendar();
+</script>
+</body>
+</html>

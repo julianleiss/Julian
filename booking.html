@@ -419,6 +419,24 @@ function initCalendar() {
     currentMonth = { year: now.getFullYear(), month: now.getMonth() };
   }
   renderCalendar();
+  maybePreselectFromURL();
+}
+
+// The hero mini-calendar sends the visitor here with ?date=YYYY-MM-DD. If that day
+// is a bookable weekday in the future, open its month and load its slots so the
+// visitor lands exactly where they tapped.
+function maybePreselectFromURL() {
+  const raw = new URLSearchParams(window.location.search).get("date");
+  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
+  const [y, m, d] = raw.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  if (isNaN(date)) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+  if (date < today || isWeekend) return;
+  currentMonth = { year: y, month: m - 1 };
+  renderCalendar();
+  selectDate(raw);
 }
 
 function getRemainingWeekdays(year, month, from) {

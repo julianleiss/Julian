@@ -24,11 +24,23 @@ Buscar en Framer todas las apariciones del número viejo. Revisar también:
 
 ## 2. Calendario en el hero (PDF, pág. 1)
 
-En desktop: mostrar el embed del calendario dentro del hero, en el recuadro rojo
-que marca el PDF, a la derecha del logo.
+**Ya hecho en código:** `hero-calendar.html` es un mini-calendario compacto para
+el hero (solo el mes, con un puntito naranja en los días que tienen turnos libres).
+No agenda ahí mismo: al tocar un día lleva a `/#agendar` (donde está el widget
+completo `booking.html`) pasando el día elegido.
 
-En mobile: en vez del calendario embebido, un botón que lleve a `/#agendar`.
-Ponerle el `id="agendar"` a la sección de agendamiento para que el ancla funcione.
+En Framer:
+
+- **Desktop:** poner un Embed con `src="https://juliancasa.vercel.app/hero-calendar.html"`
+  en el recuadro rojo del hero, a la derecha del logo. Ancho ~380px, alto ~360px
+  (publica su altura por `postMessage`, igual que `booking.html`).
+- **Mobile:** en vez del embed, un botón "Agendá una visita" que lleve a `/#agendar`.
+- Ponerle el `id="agendar"` a la sección de agendamiento para que el ancla funcione.
+- El mini-calendario avisa el día elegido de dos formas: cambia el hash del top a
+  `#agendar?date=YYYY-MM-DD` **y** manda `postMessage({type:"hero:agendar", date})`.
+  `booking.html` ya lee ese `?date=` y abre el día preseleccionado. Si Framer come
+  el query string en el ancla, se puede escuchar el `postMessage` en un Code
+  Component y hacer el scroll a mano.
 
 En el mismo mockup Guille marca **"Mover nombre y logo acá"**: el logo va a la
 izquierda, liberando la derecha para el calendario.
