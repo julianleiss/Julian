@@ -312,6 +312,20 @@ async function selectDay(ymd) {
     btn.addEventListener("click", () => goToAgendar(ymd, slots[+btn.dataset.i].start));
   });
   notifyHeight();
+  scrollToSlots();
+}
+
+// Bring the slot list into view. The iframe grows via notifyHeight, but the parent
+// page keeps its own scroll position, so also nudge the parent to reveal it.
+function scrollToSlots() {
+  const wrap = document.getElementById("slots-wrap");
+  try { wrap.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch (e) {}
+  // Ask the Framer parent to scroll the iframe into view once it has resized.
+  try {
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: "hero:reveal-slots" }, "*");
+    }
+  } catch (e) {}
 }
 
 // Fetch the whole visible month's slots once, bucketed by local day. Used both
