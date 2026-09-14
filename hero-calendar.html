@@ -167,6 +167,7 @@
       border-radius: 4px;
     }
     .slot-btn:hover { border-color: var(--brown); }
+    .slot-btn.selected { background: var(--brown); color: var(--cream); border-color: var(--brown); }
     .slots-empty { font-size: 12px; color: var(--dim); grid-column: 1/-1; padding: 6px 0; }
 
     /* Mobile: the calendar is replaced in Framer by a button, but if this file is
@@ -310,7 +311,14 @@ async function selectDay(ymd) {
     `<button class="slot-btn" data-i="${i}">${formatTime(s.start)}</button>`
   ).join("");
   grid.querySelectorAll(".slot-btn").forEach(btn => {
-    btn.addEventListener("click", () => goToAgendar(ymd, slots[+btn.dataset.i].start));
+    btn.addEventListener("click", () => {
+      // Immediate visual feedback: mark this time selected regardless of whether
+      // the #agendar handoff succeeds, so a click always looks like it did something.
+      grid.querySelectorAll(".slot-btn").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      document.getElementById("hc-hint").textContent = "Abriendo…";
+      goToAgendar(ymd, slots[+btn.dataset.i].start);
+    });
   });
   notifyHeight();
   scrollToSlots();
