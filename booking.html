@@ -677,6 +677,7 @@ document.getElementById("btn-submit").addEventListener("click", async () => {
       a.href = data.meet_link;
       a.textContent = "Abrir link de Google Meet →";
     }
+    trackSchedule();
     showStep("step-3");
   } catch {
     showError("Ocurrió un error. Intentá de nuevo.");
@@ -783,6 +784,21 @@ function notifyHeight() {
     window.parent.postMessage({ type: "booking:height", height: h }, "*");
     // iframe-resizer / Framer-compatible fallbacks
     window.parent.postMessage(`booking-height:${h}`, "*");
+  } catch (e) {}
+}
+
+// ── Meta Pixel conversion ──
+// The widget runs inside an iframe, so the Meta Pixel (loaded on julian.casa)
+// isn't reachable here. Fire fbq directly if it happens to exist, and always
+// postMessage the parent so a small listener on the Framer page can call
+// fbq('track','Schedule'). The Meta Event Setup Tool can't reach into a
+// cross-origin iframe, which is why the button couldn't be tagged by clicking.
+function trackSchedule() {
+  try { if (window.fbq) window.fbq("track", "Schedule"); } catch (e) {}
+  try {
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: "booking:conversion", event: "Schedule" }, "*");
+    }
   } catch (e) {}
 }
 
