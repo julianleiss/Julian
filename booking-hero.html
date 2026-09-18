@@ -352,10 +352,10 @@
   <div class="step" id="step-3">
     <div class="success">
       <div class="success-icon">✓</div>
-      <h2>Reunión confirmada.</h2>
+      <h2>¡Visita agendada!</h2>
       <p id="success-datetime"></p>
-      <p style="margin-top:8px;margin-bottom:16px">Te enviamos un email con el link de Google Meet.</p>
-      <a href id="success-meet" target="_blank" rel="noopener"></a>
+      <p style="margin-top:8px;margin-bottom:16px">En unos minutos, te contactaremos desde el equipo de Estudio AGR para confirmar la visita.</p>
+      <a href="https://wa.me/5491164033819" id="success-contact" target="_blank" rel="noopener">Contactar al equipo de Estudio AGR →</a>
     </div>
   </div>
 
@@ -683,15 +683,10 @@ document.getElementById("btn-submit").addEventListener("click", async () => {
     }
     if (!res.ok) throw new Error(res.status);
 
-    const data = await res.json();
+    await res.json();
     document.getElementById("success-datetime").textContent =
-      `${formatDateLong(selectedDate)} · ${formatTime(selectedSlot.start)}`;
-    if (data.meet_link) {
-      const a = document.getElementById("success-meet");
-      a.href = data.meet_link;
-      a.textContent = "Abrir link de Google Meet →";
-    }
-    trackSchedule();
+      `${capitalize(formatDateLong(selectedDate))} · ${formatTime(selectedSlot.start)}`;
+    trackConversion();
     showStep("step-3");
   } catch {
     showError("Ocurrió un error. Intentá de nuevo.");
@@ -805,13 +800,14 @@ function notifyHeight() {
 // The widget runs inside an iframe, so the Meta Pixel (loaded on julian.casa)
 // isn't reachable here. Fire fbq directly if it happens to exist, and always
 // postMessage the parent so a small listener on the Framer page can call
-// fbq('track','Schedule'). The Meta Event Setup Tool can't reach into a
-// cross-origin iframe, which is why the button couldn't be tagged by clicking.
-function trackSchedule() {
-  try { if (window.fbq) window.fbq("track", "Schedule"); } catch (e) {}
+// fbq('track','Lead'). The Meta Event Setup Tool can't reach into a cross-origin
+// iframe, which is why the confirm button couldn't be tagged by clicking.
+// "Lead" is Meta's "Cliente potencial" — the event the ad campaign optimizes for.
+function trackConversion() {
+  try { if (window.fbq) window.fbq("track", "Lead"); } catch (e) {}
   try {
     if (window.parent !== window) {
-      window.parent.postMessage({ type: "booking:conversion", event: "Schedule" }, "*");
+      window.parent.postMessage({ type: "booking:conversion", event: "Lead" }, "*");
     }
   } catch (e) {}
 }
