@@ -808,16 +808,26 @@ function notifyHeight() {
 // it). Instead we redirect the whole page to a dedicated thank-you URL; its
 // PageView is what the ad campaign counts as the conversion. Returns true if the
 // redirect was issued, false if we should fall back to the in-widget success step.
-var THANK_YOU_URL = "/gracias";
+var THANK_YOU_PATH = "/gracias";
+var SITE_ORIGIN = "https://julian.casa";
+// Build an ABSOLUTE thank-you URL on the parent site, not the iframe's own origin.
+// A relative "/gracias" would resolve against juliancasa.vercel.app; use the
+// parent page's origin (via document.referrer) and fall back to the known domain.
+function thankYouURL() {
+  var origin = SITE_ORIGIN;
+  try { if (document.referrer) origin = new URL(document.referrer).origin; } catch (e) {}
+  return origin + THANK_YOU_PATH;
+}
 function goToThankYou() {
+  var url = thankYouURL();
   try {
     var top = window.top || window.parent || window;
-    top.location.href = THANK_YOU_URL;
+    top.location.href = url;
     return true;
   } catch (e) {
     // Cross-origin frames can block top navigation; try the parent, then self.
-    try { window.parent.location.href = THANK_YOU_URL; return true; } catch (e2) {}
-    try { window.location.href = THANK_YOU_URL; return true; } catch (e3) {}
+    try { window.parent.location.href = url; return true; } catch (e2) {}
+    try { window.location.href = url; return true; } catch (e3) {}
     return false;
   }
 }
