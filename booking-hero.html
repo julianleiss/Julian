@@ -684,10 +684,16 @@ document.getElementById("btn-submit").addEventListener("click", async () => {
     if (!res.ok) throw new Error(res.status);
 
     await res.json();
-    document.getElementById("success-datetime").textContent =
-      `${capitalize(formatDateLong(selectedDate))} · ${formatTime(selectedSlot.start)}`;
-    trackConversion();
-    showStep("step-3");
+    // Send the whole page to the thank-you URL: its PageView is the conversion the
+    // ad campaign tracks (a dedicated URL is far more reliable than an in-iframe
+    // fbq event, which ad-blockers/DNT silently drop). Navigate the TOP window so
+    // it leaves the iframe; fall back to the widget's own success step if we're
+    // somehow not framed or navigation is blocked.
+    if (!goToThankYou()) {
+      document.getElementById("success-datetime").textContent =
+        `${capitalize(formatDateLong(selectedDate))} · ${formatTime(selectedSlot.start)}`;
+      showStep("step-3");
+    }
   } catch {
     showError("Ocurrió un error. Intentá de nuevo.");
     turnstileToken = null;
@@ -796,20 +802,24 @@ function notifyHeight() {
   } catch (e) {}
 }
 
-// ── Meta Pixel conversion ──
-// The widget runs inside an iframe, so the Meta Pixel (loaded on julian.casa)
-// isn't reachable here. Fire fbq directly if it happens to exist, and always
-// postMessage the parent so a small listener on the Framer page can call
-// fbq('track','Lead'). The Meta Event Setup Tool can't reach into a cross-origin
-// iframe, which is why the confirm button couldn't be tagged by clicking.
-// "Lead" is Meta's "Cliente potencial" — the event the ad campaign optimizes for.
-function trackConversion() {
-  try { if (window.fbq) window.fbq("track", "Lead"); } catch (e) {}
+// ── Thank-you redirect (conversion tracking) ──
+// The confirm button lives in a cross-origin iframe, so Meta's Event Setup Tool
+// can't tag it and an in-iframe fbq('track') is unreliable (ad-blockers/DNT drop
+// it). Instead we redirect the whole page to a dedicated thank-you URL; its
+// PageView is what the ad campaign counts as the conversion. Returns true if the
+// redirect was issued, false if we should fall back to the in-widget success step.
+var THANK_YOU_URL = "/gracias";
+function goToThankYou() {
   try {
-    if (window.parent !== window) {
-      window.parent.postMessage({ type: "booking:conversion", event: "Lead" }, "*");
-    }
-  } catch (e) {}
+    var top = window.top || window.parent || window;
+    top.location.href = THANK_YOU_URL;
+    return true;
+  } catch (e) {
+    // Cross-origin frames can block top navigation; try the parent, then self.
+    try { window.parent.location.href = THANK_YOU_URL; return true; } catch (e2) {}
+    try { window.location.href = THANK_YOU_URL; return true; } catch (e3) {}
+    return false;
+  }
 }
 
 if (typeof ResizeObserver !== "undefined") {
