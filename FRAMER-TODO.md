@@ -45,11 +45,49 @@ En Framer:
 En el mismo mockup Guille marca **"Mover nombre y logo acá"**: el logo va a la
 izquierda, liberando la derecha para el calendario.
 
+## 2.b Texto arriba del calendario (feedback Dan + Guille, 22–25 Sep)
+
+Dan: *"Falta agregar de qué va la agenda"*. Guille, más concreto: que en la home,
+**antes del calendario**, diga de qué es ese calendario.
+
+Texto pedido por Guille, literal:
+
+```
+Agendá una visita a Julián
+```
+
+Dan había propuesto la variante "Agendá tu visita a obra". Ahora que el widget
+pregunta la modalidad (Meet o visita a obra), conviene el texto de Guille, que
+no promete una sola de las dos.
+
+Va como texto de Framer arriba del Embed, tanto en la home como en `/agendar`.
+
+---
+
 ## 3. CTAs para agendar a medida que bajás (PDF, pág. 1)
 
 Agregar botones "Agendar una visita" repartidos en la página, apuntando a
 `/#agendar`. El PDF marca la sección "PROYECTO" (la de las flores) como uno de
 los lugares. Poner al menos 2 o 3 a lo largo del scroll.
+
+## 3.b Modalidad y precios — YA HECHOS EN CÓDIGO
+
+Los otros dos pedidos de ese hilo ya están resueltos en `booking.html` y no
+requieren tocar Framer:
+
+- **Modalidad (Dan):** en el paso 2 hay un selector "¿Cómo preferís la reunión?"
+  con Google Meet (por defecto) o Visita a obra. Viaja al backend dentro de
+  `notes`, como primera línea: `Modalidad: Visita a obra`. No se agregó un campo
+  nuevo al POST para no arriesgar un 422 contra `api.cs-arquitectura.com`.
+  Si el equipo quiere la modalidad como campo estructurado en el CRM, hay que
+  coordinarlo con quien mantiene esa API.
+- **Precios (Guille):** justo arriba de "CONFIRMAR REUNIÓN" aparece el bloque
+  "Valores de referencia" con los cuatro rangos. Si la persona eligió un tipo de
+  ambiente, esa fila se resalta en naranja.
+
+Los valores están hardcodeados en el HTML; cuando cambien, se editan ahí.
+
+---
 
 ## 4. Altura del iframe del embed
 
