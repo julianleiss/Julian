@@ -62,6 +62,14 @@ no promete una sola de las dos.
 
 Va como texto de Framer arriba del Embed, tanto en la home como en `/agendar`.
 
+> **Actualización (8 oct):** Guille pidió el texto final, que **reemplaza** al de arriba:
+>
+> ```
+> Agendá una llamada o visita comercial al proyecto
+> ```
+>
+> Cambiarlo en Framer (home y `/agendar`). Es solo texto de Framer: el widget no lo contiene.
+
 ---
 
 ## 3. CTAs para agendar a medida que bajás (PDF, pág. 1)
