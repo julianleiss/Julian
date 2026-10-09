@@ -38,16 +38,18 @@
     .step.active { display: block; }
 
     /* ── Step 1: calendar ── */
-    .hc-head { margin-bottom: 18px; }
+    .hc-head { margin-bottom: 24px; }
     .hc-title {
-      font-size: 19px;
-      font-weight: 600;
-      line-height: 1.25;
-      letter-spacing: -0.01em;
+      font-size: 22px;
+      font-weight: 500;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
       color: var(--brown);
-      margin-bottom: 6px;
+      margin-bottom: 10px;
+      /* Break the line evenly instead of leaving one word hanging. */
+      text-wrap: balance;
     }
-    .hc-sub { font-size: 13px; color: var(--brown-mid); }
+    .hc-sub { font-size: 13px; line-height: 1.45; color: var(--brown-mid); letter-spacing: 0.01em; }
 
     /* Shortcut to the soonest open time: one tap straight to the contact form. */
     .next-slot {
@@ -140,8 +142,8 @@
     }
     /* Days with open times read as buttons: a ring + dot. Once availability has
        loaded, weekdays without times fade back like the weekends. */
-    .cal-day.has-slots { font-weight: 600; background: rgba(97,65,45,0.09); position: relative; }
-    .cal-day.has-slots::after {
+    .cal-day.has-slots:not(:disabled) { font-weight: 600; background: rgba(97,65,45,0.07); position: relative; }
+    .cal-day.has-slots:not(:disabled)::after {
       content: "";
       position: absolute;
       bottom: 18%;
@@ -151,12 +153,12 @@
       border-radius: 50%;
       background: var(--orange);
     }
-    .cal-day.has-slots.selected::after { background: var(--cream); }
+    .cal-day.has-slots.selected:not(:disabled)::after { background: var(--cream); }
     .cal-day.no-slots { color: var(--brown-light); }
     .cal-day:hover:not(:disabled) { background: var(--brown-light); }
     .cal-day.selected { background: var(--brown); color: var(--cream); }
     .cal-day.today { font-weight: 700; }
-    .cal-day.selected, .cal-day.today.selected { background: var(--brown); color: var(--cream); }
+    .cal-day.selected, .cal-day.today.selected, .cal-day.has-slots.selected:not(:disabled) { background: var(--brown); color: var(--cream); }
     .cal-day:disabled { color: var(--brown-light); cursor: default; }
     .cal-day.empty { cursor: default; }
 
