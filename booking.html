@@ -1009,7 +1009,12 @@ var SITE_ORIGIN = "https://julian.casa";
 // parent page's origin (via document.referrer) and fall back to the known domain.
 function thankYouURL() {
   var origin = SITE_ORIGIN;
-  try { if (document.referrer) origin = new URL(document.referrer).origin; } catch (e) {}
+  try {
+    // When the hero card hands off inside the same iframe, the referrer is this
+    // widget's own host (juliancasa.vercel.app): never send the visitor there.
+    var ref = document.referrer ? new URL(document.referrer).origin : "";
+    if (ref && ref !== window.location.origin) origin = ref;
+  } catch (e) {}
   return origin + THANK_YOU_PATH;
 }
 function goToThankYou() {
