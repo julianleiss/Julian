@@ -38,6 +38,50 @@
     .step.active { display: block; }
 
     /* ── Step 1: calendar ── */
+    .hc-head { margin-bottom: 18px; }
+    .hc-title {
+      font-size: 19px;
+      font-weight: 600;
+      line-height: 1.25;
+      letter-spacing: -0.01em;
+      color: var(--brown);
+      margin-bottom: 6px;
+    }
+    .hc-sub { font-size: 13px; color: var(--brown-mid); }
+
+    /* Shortcut to the soonest open time: one tap straight to the contact form. */
+    .next-slot {
+      display: none;
+      width: 100%;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+      padding: 12px 16px;
+      background: var(--brown);
+      color: var(--cream);
+      border: none;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .next-slot.visible { display: flex; }
+    .next-slot:hover { background: var(--orange); }
+    .next-slot small {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      opacity: 0.7;
+      margin-bottom: 2px;
+    }
+    .next-slot b { font-weight: 600; }
+    .next-slot .arrow { font-size: 18px; flex-shrink: 0; }
+
     .month-nav {
       display: flex;
       align-items: center;
@@ -94,10 +138,25 @@
       font-family: inherit;
       transition: background 0.15s, color 0.15s;
     }
+    /* Days with open times read as buttons: a ring + dot. Once availability has
+       loaded, weekdays without times fade back like the weekends. */
+    .cal-day.has-slots { font-weight: 600; background: rgba(97,65,45,0.09); position: relative; }
+    .cal-day.has-slots::after {
+      content: "";
+      position: absolute;
+      bottom: 18%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: var(--orange);
+    }
+    .cal-day.has-slots.selected::after { background: var(--cream); }
+    .cal-day.no-slots { color: var(--brown-light); }
     .cal-day:hover:not(:disabled) { background: var(--brown-light); }
     .cal-day.selected { background: var(--brown); color: var(--cream); }
-    .cal-day.today { font-weight: 700; color: var(--orange); }
-    .cal-day.today.selected { background: var(--brown); color: var(--cream); }
+    .cal-day.today { font-weight: 700; }
+    .cal-day.selected, .cal-day.today.selected { background: var(--brown); color: var(--cream); }
     .cal-day:disabled { color: var(--brown-light); cursor: default; }
     .cal-day.empty { cursor: default; }
 
@@ -295,6 +354,11 @@
 
   <!-- STEP 1: Calendar (date only) -->
   <div class="step active" id="step-1">
+    <div class="hc-head">
+      <h2 class="hc-title">Agendá una llamada o visita comercial al proyecto</h2>
+      <p class="hc-sub">Elegí un día y un horario. Te confirmamos por mail.</p>
+    </div>
+    <button class="next-slot" id="next-slot" type="button"></button>
     <div class="month-nav">
       <button id="prev-month" aria-label="Mes anterior">‹</button>
       <span class="month-label" id="month-label"></span>
@@ -368,6 +432,8 @@ const DAYS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
 let currentMonth, selectedDate, selectedSlot, allSlots = {}, turnstileToken = null;
+// Months whose availability has been fetched: monthsLoaded["2026-10"] = true.
+const monthsLoaded = {};
 
 // ── Turnstile callbacks ──
 // The submit button must NEVER stay disabled because of the captcha. If Turnstile
@@ -423,6 +489,73 @@ function initCalendar() {
   }
   renderCalendar();
   maybePreselectFromURL();
+  loadAvailability().then(showNextSlot);
+}
+
+// Fetch the whole visible month once and bucket it by local day, so the calendar
+// can mark days with open times and the "next time" shortcut has data. Fills the
+// same allSlots cache selectDate uses, so picking a day needs no second request.
+async function loadAvailability(target) {
+  const { year, month } = target || currentMonth;
+  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+  if (monthsLoaded[monthKey]) return;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  try {
+    const url = new URL(`${API_BASE}/api/public/v1/bookings/slots`);
+    url.searchParams.set("from", shiftYMD(`${monthKey}-01`, -1));
+    url.searchParams.set("to", shiftYMD(`${monthKey}-${String(daysInMonth).padStart(2, "0")}`, 1));
+    const res = await fetch(url, { headers: { "X-Intake-Token": TOKEN } });
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    const now = Date.now();
+    const byDay = {};
+    for (let d = 1; d <= daysInMonth; d++) byDay[`${monthKey}-${String(d).padStart(2, "0")}`] = [];
+    (data.slots || []).forEach(s => {
+      const day = localYMD(s.start);
+      if (s.available && byDay[day] && new Date(s.start).getTime() > now) byDay[day].push(s);
+    });
+    Object.entries(byDay).forEach(([day, arr]) => {
+      arr.sort((a, b) => new Date(a.start) - new Date(b.start));
+      allSlots[day] = arr;
+    });
+    monthsLoaded[monthKey] = true;
+  } catch (e) {
+    // Leave the month "unknown": days stay neutral and selectDate fetches per day.
+    return;
+  }
+  if (!target) renderCalendar();
+}
+
+// Soonest open time from today on (looks one month ahead if this one is full).
+async function showNextSlot() {
+  const btn = document.getElementById("next-slot");
+  const find = () => Object.keys(allSlots).sort()
+    .map(d => (allSlots[d] || [])[0]).filter(Boolean)[0];
+  let slot = find();
+  if (!slot) {
+    const next = new Date(currentMonth.year, currentMonth.month + 1, 1);
+    await loadAvailability({ year: next.getFullYear(), month: next.getMonth() });
+    slot = find();
+  }
+  if (!slot) return;
+  const ymd = localYMD(slot.start);
+  btn.innerHTML = `<span><small>Próximo horario</small><b>${capitalize(formatDateLong(ymd))} · ${formatTime(slot.start)}</b></span><span class="arrow" aria-hidden="true">→</span>`;
+  btn.classList.add("visible");
+  btn.onclick = () => {
+    currentMonth = { year: +ymd.slice(0, 4), month: +ymd.slice(5, 7) - 1 };
+    pickSlot(ymd, slot);
+  };
+  notifyHeight();
+}
+
+// Jump straight from a chosen day+slot to the contact form.
+async function pickSlot(ymd, slot) {
+  await selectDate(ymd);
+  const match = (allSlots[ymd] || []).find(s => s.start === slot.start);
+  if (!match) return; // gone in the meantime: stay on the slot picker
+  selectedSlot = match;
+  document.getElementById("btn-to-form").disabled = false;
+  document.getElementById("btn-to-form").click();
 }
 
 // The hero mini-calendar sends the visitor here with ?date=YYYY-MM-DD (and
@@ -490,8 +623,12 @@ function renderCalendar() {
     const isSelected = selectedDate === ymd;
     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
 
-    grid.innerHTML += `<button class="cal-day${isToday ? " today" : ""}${isSelected ? " selected" : ""}"
-      ${isPast || isWeekend ? "disabled" : ""}
+    const known = Array.isArray(allSlots[ymd]) && monthsLoaded[ymd.slice(0, 7)];
+    const hasSlots = known && allSlots[ymd].length > 0;
+    const noSlots = known && !hasSlots;
+
+    grid.innerHTML += `<button class="cal-day${isToday ? " today" : ""}${hasSlots ? " has-slots" : ""}${noSlots ? " no-slots" : ""}${isSelected ? " selected" : ""}"
+      ${isPast || isWeekend || noSlots ? "disabled" : ""}
       data-date="${ymd}">${d}</button>`;
   }
 
@@ -569,11 +706,13 @@ document.getElementById("prev-month").addEventListener("click", () => {
   currentMonth.month--;
   if (currentMonth.month < 0) { currentMonth.month = 11; currentMonth.year--; }
   renderCalendar();
+  loadAvailability();
 });
 document.getElementById("next-month").addEventListener("click", () => {
   currentMonth.month++;
   if (currentMonth.month > 11) { currentMonth.month = 0; currentMonth.year++; }
   renderCalendar();
+  loadAvailability();
 });
 
 // Back from the slots screen to the calendar.

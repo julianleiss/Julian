@@ -45,6 +45,14 @@ En Framer:
 En el mismo mockup Guille marca **"Mover nombre y logo acá"**: el logo va a la
 izquierda, liberando la derecha para el calendario.
 
+## 2.a Hero: el título ahora vive DENTRO de la tarjeta (9 Oct)
+
+`booking-hero.html` (el embed del hero) ahora trae su propio título
+"Agendá una llamada o visita comercial al proyecto" (texto aprobado por el cliente),
+un botón "Próximo horario" que lleva directo al formulario, y marca los días con
+horarios. **Si en Framer hay un texto suelto arriba del embed del hero, borrarlo**
+para que no se repita.
+
 ## 2.b Texto arriba del calendario (feedback Dan + Guille, 22–25 Sep)
 
 Dan: *"Falta agregar de qué va la agenda"*. Guille, más concreto: que en la home,
