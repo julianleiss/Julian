@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Agendar reunión — Julián</title>
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
@@ -379,52 +378,6 @@
     <button class="submit-btn" id="btn-to-form" disabled>Continuar</button>
   </div>
 
-  <!-- STEP 2: Contact form -->
-  <div class="step" id="step-2">
-    <button class="form-back" id="btn-back">← Volver</button>
-    <div class="slot-summary" id="slot-summary"></div>
-
-    <div class="field-row">
-      <div class="field"><label>Nombre</label><input type="text" id="f-name" autocomplete="given-name" required /></div>
-      <div class="field"><label>Apellido</label><input type="text" id="f-last" autocomplete="family-name" required /></div>
-    </div>
-    <div class="field"><label>Email</label><input type="email" id="f-email" autocomplete="email" required /></div>
-    <div class="field"><label>Teléfono</label><input type="tel" id="f-phone" autocomplete="tel" inputmode="tel" placeholder="+54 11 1234-5678" required /></div>
-    <div class="field"><label>¿Qué ambientes te interesan?</label>
-      <select id="f-rooms">
-        <option value="">Sin preferencia</option>
-        <option value="Monoambiente">Monoambiente</option>
-        <option value="2 ambientes">2 ambientes</option>
-        <option value="3 ambientes">3 ambientes</option>
-        <option value="4 ambientes o más">4 ambientes o más</option>
-      </select>
-    </div>
-    <div class="field"><label>Mensaje (opcional)</label><textarea id="f-notes" placeholder="¿Hay algún otro dato que te parezca relevante mencionar?"></textarea></div>
-
-    <div id="turnstile-widget"
-       class="cf-turnstile"
-       data-sitekey="0x4AAAAAADEfR6MeeHhRelbY"
-       data-callback="onTurnstileSuccess"
-       data-error-callback="onTurnstileError"
-       data-expired-callback="onTurnstileExpired"
-       data-appearance="interaction-only"
-       data-size="flexible"></div>
-
-    <button class="submit-btn" id="btn-submit" disabled>Confirmar reunión</button>
-    <div class="error-msg" id="error-msg"></div>
-  </div>
-
-  <!-- STEP 3: Success -->
-  <div class="step" id="step-3">
-    <div class="success">
-      <div class="success-icon">✓</div>
-      <h2>¡Visita agendada!</h2>
-      <p id="success-datetime"></p>
-      <p style="margin-top:8px;margin-bottom:16px">En unos minutos, te contactaremos desde el equipo de Estudio AGR para confirmar la visita.</p>
-      <a href="https://wa.me/5491164033819" id="success-contact" target="_blank" rel="noopener">Contactar al equipo de Estudio AGR →</a>
-    </div>
-  </div>
-
 </div>
 
 <script>
@@ -433,50 +386,9 @@ const TOKEN = "fb7ea7020b93b2d90f0fc357832fbe7ab20feb074ede1462aff9aac416f9257c"
 const DAYS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-let currentMonth, selectedDate, selectedSlot, allSlots = {}, turnstileToken = null;
+let currentMonth, selectedDate, selectedSlot, allSlots = {};
 // Months whose availability has been fetched: monthsLoaded["2026-10"] = true.
 const monthsLoaded = {};
-
-// ── Turnstile callbacks ──
-// The submit button must NEVER stay disabled because of the captcha. If Turnstile
-// fails to load, is misconfigured, or errors out, degrade gracefully: the booking
-// still submits and the API decides whether to accept it.
-function enableSubmit() {
-  const btn = document.getElementById("btn-submit");
-  if (btn) btn.disabled = false;
-}
-
-window.onTurnstileSuccess = (token) => {
-  turnstileToken = token;
-  clearTimeout(window._turnstileTimer);
-  enableSubmit();
-  if (window._submitPending) {
-    window._submitPending = false;
-    document.getElementById("btn-submit").click();
-  }
-};
-
-window.onTurnstileError = (code) => {
-  // 400020 = invalid sitekey, etc. The API rejects a booking without a token,
-  // so we can't submit anyway — surface it instead of retrying into a 422.
-  console.warn("[booking] Turnstile error:", code);
-  turnstileToken = null;
-  clearTimeout(window._turnstileTimer);
-  const btn = document.getElementById("btn-submit");
-  if (btn) {
-    btn.disabled = false;
-    btn.textContent = "Confirmar reunión";
-  }
-  if (window._submitPending) {
-    window._submitPending = false;
-    showError("No pudimos verificar que no sos un robot. Recargá la página e intentá de nuevo.");
-  }
-};
-
-window.onTurnstileExpired = () => {
-  turnstileToken = null;
-  try { turnstile.reset(); } catch (e) {}
-};
 
 // ── Calendar ──
 function initCalendar() {
@@ -724,194 +636,19 @@ document.getElementById("btn-back-cal").addEventListener("click", () => {
   showStep("step-1");
 });
 
+// The hero card only picks the day and time. Everything after that (modalidad,
+// datos, valores de referencia, presupuesto, confirmar) is the full wizard in
+// booking.html, so hand off to it INSIDE this same iframe with the choice preloaded.
+function goToWizard() {
+  const q = new URLSearchParams({ date: selectedDate, time: selectedSlot.start });
+  const utm = new URLSearchParams(window.location.search).get("utm_source");
+  if (utm) q.set("utm_source", utm);
+  window.location.href = "booking.html?" + q.toString();
+}
+
 document.getElementById("btn-to-form").addEventListener("click", () => {
   if (!selectedDate || !selectedSlot) return;
-  // Enable submit FIRST: no later failure (date formatting, captcha) may ever leave
-  // the user on step 2 with a dead "Confirmar reunión" button.
-  enableSubmit();
-  showStep("step-2");
-  try {
-    document.getElementById("slot-summary").textContent =
-      `${formatDateLong(selectedDate)} · ${formatTime(selectedSlot.start)} – ${formatTime(selectedSlot.end)}`;
-  } catch (e) {
-    console.warn("[booking] slot summary failed:", e);
-  }
-  // The widget only shows a challenge if Cloudflare asks for one
-  // (appearance="interaction-only"); field validation happens on click.
-  setTimeout(enableSubmit, 2500);
-});
-
-document.getElementById("btn-back").addEventListener("click", () => showStep("step-slots"));
-
-// ── Submit ──
-document.getElementById("btn-submit").addEventListener("click", async () => {
-  const btn = document.getElementById("btn-submit");
-  const errEl = document.getElementById("error-msg");
-  errEl.classList.remove("visible");
-
-  const name = document.getElementById("f-name").value.trim();
-  const last = document.getElementById("f-last").value.trim();
-  const email = document.getElementById("f-email").value.trim();
-  const phone = document.getElementById("f-phone").value.trim();
-  const rooms = document.getElementById("f-rooms").value;
-  const notes = document.getElementById("f-notes").value.trim();
-
-  if (!validateAll()) {
-    showError("Revisá los campos marcados.");
-    return;
-  }
-
-  // The API REQUIRES a non-empty turnstile_token (a null or "" is rejected with
-  // a 422), so we cannot submit without one. If the token has not arrived yet,
-  // ask Turnstile for it and let its callback re-trigger this click.
-  if (!turnstileToken) {
-    btn.disabled = true;
-    btn.textContent = "Verificando...";
-    window._submitPending = true;
-    try {
-      turnstile.execute();
-    } catch (e) {
-      window._submitPending = false;
-      btn.disabled = false;
-      btn.textContent = "Confirmar reunión";
-      showError("No pudimos verificar que no sos un robot. Recargá la página e intentá de nuevo.");
-      return;
-    }
-    // If the captcha never answers, tell the user instead of hanging on "Verificando...".
-    clearTimeout(window._turnstileTimer);
-    window._turnstileTimer = setTimeout(() => {
-      if (window._submitPending) {
-        window._submitPending = false;
-        btn.disabled = false;
-        btn.textContent = "Confirmar reunión";
-        showError("La verificación no respondió. Recargá la página e intentá de nuevo.");
-      }
-    }, 12000);
-    return;
-  }
-
-  clearTimeout(window._turnstileTimer);
-  btn.disabled = true;
-  btn.textContent = "Confirmando...";
-
-  try {
-    const res = await fetch(`${API_BASE}/api/public/v1/bookings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Intake-Token": TOKEN },
-      body: JSON.stringify({
-        name, last, email, phone,
-        rooms: rooms || null,
-        notes: [rooms ? `Ambientes de interés: ${rooms}` : null, notes || null]
-          .filter(Boolean).join("\n") || null,
-        start_time: selectedSlot.start,
-        end_time: selectedSlot.end,
-        turnstile_token: turnstileToken,
-        dedupe_key: crypto.randomUUID(),
-        landing_url: window.location.href,
-        referrer_url: document.referrer || null,
-        utm_source: new URLSearchParams(window.location.search).get("utm_source") || null,
-      }),
-    });
-
-    if (res.status === 409) {
-      showError("Ese horario ya fue reservado. Elegí otro.");
-      allSlots[selectedDate] = null;
-      turnstileToken = null;
-      try { turnstile.reset(); } catch(e) {}
-      btn.disabled = false;
-      btn.textContent = "Confirmar reunión";
-      return;
-    }
-    if (!res.ok) throw new Error(res.status);
-
-    await res.json();
-    // Send the whole page to the thank-you URL: its PageView is the conversion the
-    // ad campaign tracks (a dedicated URL is far more reliable than an in-iframe
-    // fbq event, which ad-blockers/DNT silently drop). Navigate the TOP window so
-    // it leaves the iframe; fall back to the widget's own success step if we're
-    // somehow not framed or navigation is blocked.
-    if (!goToThankYou()) {
-      document.getElementById("success-datetime").textContent =
-        `${capitalize(formatDateLong(selectedDate))} · ${formatTime(selectedSlot.start)}`;
-      showStep("step-3");
-    }
-  } catch {
-    showError("Ocurrió un error. Intentá de nuevo.");
-    turnstileToken = null;
-    try { turnstile.reset(); } catch(e) {}
-    btn.disabled = false;
-    btn.textContent = "Confirmar reunión";
-  }
-});
-
-// ── Field validation ──
-// Rules are checked on submit and re-checked live once a field has been touched,
-// so the user sees the problem next to the field instead of a generic banner.
-const VALIDATORS = {
-  "f-name":  v => v.trim().length >= 2 || "Ingresá tu nombre.",
-  "f-last":  v => v.trim().length >= 2 || "Ingresá tu apellido.",
-  "f-email": v => /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(v.trim()) || "Ingresá un email válido.",
-  // Must contain 8–15 real digits; letters and symbol-only input are rejected.
-  "f-phone": v => {
-    const raw = v.trim();
-    if (/[^\d\s+\-().]/.test(raw)) return "El teléfono solo puede tener números.";
-    const digits = raw.replace(/\D/g, "");
-    if (digits.length < 8) return "El número es demasiado corto.";
-    if (digits.length > 15) return "El número es demasiado largo.";
-    return true;
-  },
-};
-
-function setFieldError(id, msg) {
-  const input = document.getElementById(id);
-  if (!input) return;
-  let el = input.parentElement.querySelector(".field-error");
-  if (!el) {
-    el = document.createElement("div");
-    el.className = "field-error";
-    input.parentElement.appendChild(el);
-  }
-  if (msg) {
-    el.textContent = msg;
-    el.classList.add("visible");
-    input.classList.add("invalid");
-  } else {
-    el.classList.remove("visible");
-    input.classList.remove("invalid");
-  }
-}
-
-function validateField(id) {
-  const input = document.getElementById(id);
-  if (!input) return true;
-  const result = VALIDATORS[id](input.value);
-  setFieldError(id, result === true ? null : result);
-  return result === true;
-}
-
-function validateAll() {
-  // Validate every field so all errors surface at once, not one at a time.
-  return Object.keys(VALIDATORS).map(validateField).every(Boolean);
-}
-
-Object.keys(VALIDATORS).forEach(id => {
-  const input = document.getElementById(id);
-  if (!input) return;
-  input.addEventListener("blur", () => validateField(id));
-  input.addEventListener("input", () => {
-    // Only nag after the field has already been flagged once.
-    if (input.classList.contains("invalid")) validateField(id);
-  });
-});
-
-// Strip characters the phone field must never contain (paste, autofill, mobile IME).
-document.getElementById("f-phone").addEventListener("input", (e) => {
-  const cleaned = e.target.value.replace(/[^\d\s+\-().]/g, "");
-  if (cleaned !== e.target.value) {
-    const pos = e.target.selectionStart - (e.target.value.length - cleaned.length);
-    e.target.value = cleaned;
-    try { e.target.setSelectionRange(pos, pos); } catch (err) {}
-  }
+  goToWizard();
 });
 
 // ── Helpers ──
@@ -943,45 +680,10 @@ function notifyHeight() {
   } catch (e) {}
 }
 
-// ── Thank-you redirect (conversion tracking) ──
-// The confirm button lives in a cross-origin iframe, so Meta's Event Setup Tool
-// can't tag it and an in-iframe fbq('track') is unreliable (ad-blockers/DNT drop
-// it). Instead we redirect the whole page to a dedicated thank-you URL; its
-// PageView is what the ad campaign counts as the conversion. Returns true if the
-// redirect was issued, false if we should fall back to the in-widget success step.
-var THANK_YOU_PATH = "/gracias";
-var SITE_ORIGIN = "https://julian.casa";
-// Build an ABSOLUTE thank-you URL on the parent site, not the iframe's own origin.
-// A relative "/gracias" would resolve against juliancasa.vercel.app; use the
-// parent page's origin (via document.referrer) and fall back to the known domain.
-function thankYouURL() {
-  var origin = SITE_ORIGIN;
-  try { if (document.referrer) origin = new URL(document.referrer).origin; } catch (e) {}
-  return origin + THANK_YOU_PATH;
-}
-function goToThankYou() {
-  var url = thankYouURL();
-  try {
-    var top = window.top || window.parent || window;
-    top.location.href = url;
-    return true;
-  } catch (e) {
-    // Cross-origin frames can block top navigation; try the parent, then self.
-    try { window.parent.location.href = url; return true; } catch (e2) {}
-    try { window.location.href = url; return true; } catch (e3) {}
-    return false;
-  }
-}
-
 if (typeof ResizeObserver !== "undefined") {
   new ResizeObserver(notifyHeight).observe(document.querySelector(".booking"));
 }
 window.addEventListener("load", notifyHeight);
-function showError(msg) {
-  const el = document.getElementById("error-msg");
-  el.textContent = msg;
-  el.classList.add("visible");
-}
 const TZ = "America/Argentina/Buenos_Aires";
 
 // Local calendar date of a Date object — never toISOString(), which shifts to UTC.
